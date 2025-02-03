@@ -16,6 +16,9 @@ class KMS:
             for _ in range(self.header.numMesh)
         ]
         
+        for mesh in self.meshes:
+            mesh.parent = self.meshes[mesh.parentInd] if mesh.parentInd > -1 else None
+        
         return self
     
     def writeToFile(self, file: BufferedWriter):
@@ -148,18 +151,19 @@ class KMSMesh:
     minPos: KMSVector3
     maxPos: KMSVector3
     pos: KMSVector3
-    parent: int
+    parentInd: int
     vertexGroupOffset: int
     pad: List[int] # 7 items
     
     vertexGroups: List[KMSVertexGroup]
+    parent: KMSMesh | None
     
     def fromFile(self, file: BufferedReader):
         self.flag, self.numVertexGroup = struct.unpack("<II", file.read(0x8))
         self.minPos = KMSVector3().fromFile(file)
         self.maxPos = KMSVector3().fromFile(file)
         self.pos = KMSVector3().fromFile(file)
-        self.parent, self.vertexGroupOffset = struct.unpack("<iI", file.read(0x8))
+        self.parentInd, self.vertexGroupOffset = struct.unpack("<iI", file.read(0x8))
         self.pad = list(struct.unpack("<7I", file.read(0x1C)))
         
         curPos = file.tell()
@@ -181,7 +185,7 @@ class KMSMesh:
         self.maxPos.writeToFile(file)
         self.pos.writeToFile(file)
         file.write(struct.pack("<iI", \
-        self.parent, self.vertexGroupOffset))
+        self.parentInd, self.vertexGroupOffset))
         for i in range(7):
             file.write(struct.pack("<I", self.pad[i]))
 
