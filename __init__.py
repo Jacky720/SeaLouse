@@ -30,6 +30,7 @@ bl_info = {
 
 import bpy
 from .kms.importer.kmsImportOperator import ImportMgsKms
+from .tri.importer.triImportOperator import ImportMgsTri
 
 #
 # Add additional functions here
@@ -37,10 +38,12 @@ from .kms.importer.kmsImportOperator import ImportMgsKms
 
 classes = (
     ImportMgsKms,
+    ImportMgsTri,
 )
 
 def menu_func_import(self, context):
     self.layout.operator(ImportMgsKms.bl_idname, text="KMS File for MGS2 (.kms)")
+    self.layout.operator(ImportMgsTri.bl_idname, text="Dump TRI textures for MGS2 (.tri)")
 
 def register():
     from . import properties
