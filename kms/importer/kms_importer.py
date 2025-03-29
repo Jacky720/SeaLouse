@@ -47,9 +47,12 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
     for i, vertexGroup in enumerate(mesh.vertexGroups):
         faceIndexOffset = len(vertices)
         vertices += [(vert.x, vert.y, vert.z) for vert in vertexGroup.vertices]
-        normals += [(nrm.x / 4095, nrm.y / 4095, nrm.z / 4095) for nrm in vertexGroup.normals]
+        normals += [(-nrm.x / 4095, -nrm.y / 4095, -nrm.z / 4095) for nrm in vertexGroup.normals]
         weights += [vert.weight for vert in vertexGroup.vertices]
-        uvs += [(uv.u / 4096, 1 - uv.v / 4096) for uv in vertexGroup.uvs]
+        if vertexGroup.uvs:
+            uvs += [(uv.u / 4096, 1 - uv.v / 4096) for uv in vertexGroup.uvs]
+        else:
+            uvs += [(0, 0) for _ in range(len(vertexGroup.vertices))]
         flip = False
         for j in range(vertexGroup.numVertex):
             if vertexGroup.normals[j].isFace:
@@ -179,6 +182,9 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
         material = bpy.data.materials.new(obj.name)
         # Enable Nodes
         material.use_nodes = True
+        # Render properties
+        material.blend_method = 'CLIP'
+        material.alpha_threshold = 0.05
         # Clear Nodes and Links
         material.node_tree.links.clear()
         material.node_tree.nodes.clear()
@@ -198,10 +204,11 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
             color_image.location = 0,0
             color_image.image = colorMap
             colorMap.colorspace_settings.name = 'sRGB'
-            colorMap.alpha_mode = "NONE"
+            #colorMap.alpha_mode = "NONE"
             color_image.hide = True
             color_image.label = "g_ColorMap%d" % i
             links.new(color_image.outputs['Color'], principled.inputs['Base Color'])
+            links.new(color_image.outputs['Alpha'], principled.inputs['Alpha'])
         
         specularMap = get_texture(extract_dir, vertexGroup.specularMap)
         if specularMap is not None:
@@ -227,7 +234,7 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
         obj.data.materials.append(material)
     return True
 
-def main(kms_file: str):
+def main(kms_file: str, useTri: bool = True):
     kms = KMS()
     with open(kms_file, "rb") as f:
         kms.fromFile(f)
@@ -254,7 +261,8 @@ def main(kms_file: str):
     kmsCollection.children.link(col)
     #bpy.context.view_layer.active_layer_collection = bpy.context.view_layer.layer_collection.children[-1]
     
-    fetch_textures(kms, kms_file)
+    if useTri:
+        fetch_textures(kms, kms_file)
     
     bMeshes = []
     for i, mesh in enumerate(kms.meshes):

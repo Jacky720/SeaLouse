@@ -11,10 +11,11 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
     filter_glob: bpy.props.StringProperty(default="*.kms", options={'HIDDEN'})
 
     reset_blend: bpy.props.BoolProperty(name="Reset Blender Scene on Import", default=True)
+    useTri: bpy.props.BoolProperty(name="Attempt to load .tri file", default=True)
 
     def execute(self, context):
         print("Loading", self.filepath)
         from . import kms_importer
         if self.reset_blend:
             kms_importer.reset_blend()
-        return kms_importer.main(self.filepath)
+        return kms_importer.main(self.filepath, self.useTri)

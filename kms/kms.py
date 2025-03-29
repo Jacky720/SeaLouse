@@ -1,5 +1,4 @@
 from __future__ import annotations
-import bpy
 from io import BufferedReader, BufferedWriter
 import struct
 
@@ -137,12 +136,14 @@ class KMSVector3:
     y: float
     z: float
     
-    def fromFile(self, file: BufferedReader):
-        self.x, self.y, self.z = struct.unpack("<fff", file.read(0xC))
+    def fromFile(self, file: BufferedReader, bigEndian: bool = False):
+        formatstr = ">fff" if bigEndian else "<fff"
+        self.x, self.y, self.z = struct.unpack(formatstr, file.read(0xC))
         return self
     
-    def writeToFile(self, file: BufferedWriter):
-        file.write(struct.pack("<fff", self.x, self.y, self.z))
+    def writeToFile(self, file: BufferedWriter, bigEndian: bool = False):
+        formatstr = ">fff" if bigEndian else "<fff"
+        file.write(struct.pack(formatstr, self.x, self.y, self.z))
 
 
 class KMSMesh:

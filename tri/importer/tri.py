@@ -194,13 +194,13 @@ class TRIEntry:
             clutHeight = 16
             size = texWidth * texHeight
             texBuffer = readTexPSMT8(self.registerInfo2.tbp0, self.registerInfo2.tbw, texX, texY, texWidth, texHeight, textureBuffer)
+            print("PSM 0x13")
         elif self.registerInfo2.psm == 0x14:
             clutWidth = 8
             clutHeight = 2
             size = texWidth * texHeight // 2
-            #texBuffer = readTexPSMT4(self.registerInfo2.tbp0, self.registerInfo2.tbw, texX, texY, texWidth, texHeight, textureBuffer)
-            print("TODO: readTexPSMT4 for PSM 0x14 on texture %d.tga" % self.texID)
-            return None
+            texBuffer = readTexPSMT4(self.registerInfo2.tbp0, self.registerInfo2.tbw, texX, texY, texWidth, texHeight, textureBuffer)
+            print("PSM 0x14, alpha", self.registerInfo2.has_alpha)
         else:
             print("Failed to export texture %d.tga: Unrecognized PSM" % self.texID)
             return None
@@ -209,11 +209,16 @@ class TRIEntry:
             specialClutBuffer = readTexPSMCT32(self.registerInfo2.cbp, 1, self.registerInfo2.csa * 8, 0, clutWidth, clutHeight, clutBuffer)
             if self.registerInfo2.psm == 0x13:
                 specialClutBuffer = unswizzleClut(specialClutBuffer)
+            
+            if all([x == 0 for x in specialClutBuffer]):
+                print("Invalid clut! CBP: %d, CSA: %d" % (self.registerInfo2.cbp, self.registerInfo2.csa))
+                specialClutBuffer = readTexPSMCT32(0, 1, 0, 0, clutWidth, clutHeight, clutBuffer)
+            else:
+                print("Valid clut: CBP: %d, CSA: %d" % (self.registerInfo2.cbp, self.registerInfo2.csa))
         else:
-            specialClutBuffer = [0] * (1024 * 1024)
-        
-        if self.registerInfo2.psm == 0x14:
-            texBuffer = bpp4to8(texBuffer, size)
+            #specialClutBuffer = [0] * (1024 * 1024)
+            print("Failed to export texture %d.tga: Unrecognized CPSM %d CSM %d" % (self.texID, self.registerInfo2.cpsm, self.registerInfo2.csm))
+            return None
         
         pixels = paintPixels(specialClutBuffer, texBuffer, texWidth, texHeight)
         
@@ -427,44 +432,54 @@ def readTexPSMT4(dbp: int, dbw: int, dsax: int, dsay: int, rrw: int, rrh: int, h
     dbp <<= 6
     # TODO: make this the 4-bit version
     i = 0
-    outBuf = [[0, 0, 0, 0] for x in range(rrh * rrw)] 
+    outBuf = [([0] * 8) for x in range(rrh * rrw)]
     for y in range(dsay, dsay + rrh):
         for x in range(dsax, dsax + rrw):
             pageX = x // 128
-            pageY = y // 64
+            pageY = y // 128
             page = pageX + pageY * dbw
             
             px = x % 128
-            py = y % 64
-            blockX = px // 16
+            py = y % 128
+            blockX = px // 32
             blockY = py // 16
-            block = block8Layout[blockX + blockY * 8]
+            block = block4Layout[blockX + blockY * 4]
             
-            bx = px % 16
+            bx = px % 32
             by = py % 16
             column = by // 4
             
             cx = bx
             cy = by % 4
-            word = columnWord8Layout[column & 1][cx + cy * 16]
+            word = columnWord4Layout[column & 1][cx + cy * 32]
             
             dx = cx // 8
             dy = cy // 2
-            byt = columnByte8Layout[dx + dy * 2]
+            byt = columnByte4Layout[dx + dy * 4]
             
             val = halfBuffer[dbp + page * 2048 + block * 64 + column * 16 + word]
-            myByte = struct.unpack("BBBB", struct.pack("<I", val))[byt]
-            outBuf[i // 4][i % 4] = myByte
+            myByte = struct.unpack("BBBB", struct.pack("<I", val))[byt // 2]
+            if byt % 2 == 1: # hi halfbyte
+                outBuf[i // 8][i % 8] |= (myByte & 0xf0) >> 4
+            else: # lo halfbyte
+                outBuf[i // 8][i % 8] |= myByte & 0xf
+            
             i += 1
     
-    return [struct.unpack("<I", struct.pack("BBBB", x[0], x[1], x[2], x[3])) for x in outBuf]
+    trueOutBuf = []
+    for x in outBuf:
+        myRearrange = struct.unpack("<II", struct.pack("BBBBBBBB", x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7]))
+        trueOutBuf.append(myRearrange[0])
+        trueOutBuf.append(myRearrange[1])
+    
+    return trueOutBuf
 
 
 def paintPixels(clut: List[int], pixels: List[int], width: int, height: int) -> bytes:
     sizeOut = width * height * 4
     texture = b""
+    print("There are %d pixels" % len(pixels))
     clut = [list(struct.unpack("BBBB", struct.pack("<I", x))) for x in clut] # RGBA
-    print(pixels[0], len(pixels))
     pixels = [list(struct.unpack("BBBB", struct.pack("<I", x))) for x in pixels]
     for y in range(height):
         for x in range(width):
@@ -515,7 +530,6 @@ def readTexPSMCT32(dbp: int, dbw: int, dsax: int, dsay: int, rrw: int, rrh: int,
             i += 1
     
     return result
-
 
 def unswizzleClut(buffer: List[int]):
     for i in range(1, 30, 4):
