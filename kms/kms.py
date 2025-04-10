@@ -7,6 +7,10 @@ class KMS:
     header: KMSHeader
     meshes: List[KMSMesh]
     
+    def __init__(self):
+        self.header = KMSHeader()
+        self.meshes = []
+    
     def fromFile(self, file: BufferedReader):
         self.header = KMSHeader().fromFile(file)
         
@@ -20,10 +24,15 @@ class KMS:
         
         return self
     
-    def writeToFile(self, file: BufferedWriter):
+    def writeToFile(self, file: BufferedWriter, vanilla_mode: bool = False):
         self.header.numMesh = len(self.meshes)
+        if not vanilla_mode:
+            self.header.numBones = len(self.meshes)
+        i = 0
         for mesh in self.meshes:
             mesh.numVertexGroup = len(mesh.vertexGroups)
+            print("Mesh %d: %d vertex groups" % (i, mesh.numVertexGroup))
+            i += 1
             for vertexGroup in mesh.vertexGroups:
                 vertCount = len(vertexGroup.vertices)
                 vertexGroup.numVertex = vertCount
@@ -61,40 +70,68 @@ class KMS:
             for vertexGroup in mesh.vertexGroups:
                 vertexGroup.vertexOffset = curExDataOffset
                 curExDataOffset += 0x8 * vertexGroup.numVertex
+                if curExDataOffset % 0x10 > 0:
+                    curExDataOffset = (curExDataOffset + 0xf) & ~0xf # fun rounding-up trick
+        for mesh in self.meshes:
+            for vertexGroup in mesh.vertexGroups:
                 vertexGroup.normalOffset = curExDataOffset
                 curExDataOffset += 0x8 * vertexGroup.numVertex
+                if curExDataOffset % 0x10 > 0:
+                    curExDataOffset = (curExDataOffset + 0xf) & ~0xf
+
+        for mesh in self.meshes:
+            for vertexGroup in mesh.vertexGroups:
                 if vertexGroup.uvs != None:
                     vertexGroup.uvOffset = curExDataOffset
                     curExDataOffset += 0x4 * vertexGroup.numVertex
                 else:
                     vertexGroup.uvOffset = 0
-                
+                if curExDataOffset % 0x10 > 0:
+                    curExDataOffset = (curExDataOffset + 0xf) & ~0xf
+            for vertexGroup in mesh.vertexGroups:
                 if vertexGroup.uvs2 != None:
                     vertexGroup.uv2Offset = curExDataOffset
                     curExDataOffset += 0x4 * vertexGroup.numVertex
                 else:
                     vertexGroup.uv2Offset = 0
-                
+                if curExDataOffset % 0x10 > 0:
+                    curExDataOffset = (curExDataOffset + 0xf) & ~0xf
+            for vertexGroup in mesh.vertexGroups:
                 if vertexGroup.uvs3 != None:
                     vertexGroup.uv3Offset = curExDataOffset
                     curExDataOffset += 0x4 * vertexGroup.numVertex
                 else:
                     vertexGroup.uv3Offset = 0
+                if curExDataOffset % 0x10 > 0:
+                    curExDataOffset = (curExDataOffset + 0xf) & ~0xf
                 
+        for mesh in self.meshes:
+            for vertexGroup in mesh.vertexGroups:
                 vertexGroup.writeToFile(file)
         
         for mesh in self.meshes:
             for vertexGroup in mesh.vertexGroups:
+                file.seek(vertexGroup.vertexOffset)
                 for vert in vertexGroup.vertices:
                     vert.writeToFile(file)
+        for mesh in self.meshes:
+            for vertexGroup in mesh.vertexGroups:
+                file.seek(vertexGroup.normalOffset)
                 for normal in vertexGroup.normals:
                     normal.writeToFile(file)
+        for mesh in self.meshes:
+            for vertexGroup in mesh.vertexGroups:
+                file.seek(vertexGroup.uvOffset)
                 if vertexGroup.uvs != None:
                     for uv in vertexGroup.uvs:
                         uv.writeToFile(file)
+            for vertexGroup in mesh.vertexGroups:
+                file.seek(vertexGroup.uv2Offset)
                 if vertexGroup.uvs2 != None:
                     for uv in vertexGroup.uvs2:
                         uv.writeToFile(file)
+            for vertexGroup in mesh.vertexGroups:
+                file.seek(vertexGroup.uv3Offset)
                 if vertexGroup.uvs3 != None:
                     for uv in vertexGroup.uvs3:
                         uv.writeToFile(file)
@@ -112,13 +149,25 @@ class KMSHeader:
     maxPos: KMSVector3
     pos: KMSVector3
     
+    def __init__(self):
+        self.kmsType = 0
+        self.numMesh = 0
+        self.numBones = 0
+        self.pad = 0
+        self.strcode = 0
+        self.pad2 = 0
+        self.pad3 = 0
+        self.minPos = KMSVector3()
+        self.maxPos = KMSVector3()
+        self.pos = KMSVector3()
+    
     def fromFile(self, file: BufferedReader):
         self.kmsType, self.numMesh, self.numBones, self.pad, \
         self.strcode, self.pad2, self.pad3 \
         = struct.unpack("<IIiIIII", file.read(0x1C))
-        self.minPos = KMSVector3().fromFile(file)
-        self.maxPos = KMSVector3().fromFile(file)
-        self.pos = KMSVector3().fromFile(file)
+        self.minPos.fromFile(file)
+        self.maxPos.fromFile(file)
+        self.pos.fromFile(file)
         
         return self
     
@@ -135,6 +184,11 @@ class KMSVector3:
     x: float
     y: float
     z: float
+    
+    def __init__(self, x=0.0, y=0.0, z=0.0):
+        self.x = float(x)
+        self.y = float(y)
+        self.z = float(z)
     
     def fromFile(self, file: BufferedReader, bigEndian: bool = False):
         formatstr = ">fff" if bigEndian else "<fff"
@@ -159,11 +213,23 @@ class KMSMesh:
     vertexGroups: List[KMSVertexGroup]
     parent: KMSMesh | None
     
+    def __init__(self):
+        self.flag = 0
+        self.numVertexGroup = 0
+        self.minPos = KMSVector3()
+        self.maxPos = KMSVector3()
+        self.pos = KMSVector3()
+        self.parentInd = -1
+        self.vertexGroupOffset = 0
+        self.pad = [0] * 7
+        self.vertexGroups = []
+        self.parent = None
+    
     def fromFile(self, file: BufferedReader):
         self.flag, self.numVertexGroup = struct.unpack("<II", file.read(0x8))
-        self.minPos = KMSVector3().fromFile(file)
-        self.maxPos = KMSVector3().fromFile(file)
-        self.pos = KMSVector3().fromFile(file)
+        self.minPos.fromFile(file)
+        self.maxPos.fromFile(file)
+        self.pos.fromFile(file)
         self.parentInd, self.vertexGroupOffset = struct.unpack("<iI", file.read(0x8))
         self.pad = list(struct.unpack("<7I", file.read(0x1C)))
         
@@ -216,6 +282,32 @@ class KMSVertexGroup:
     uvs: List[KMSUv] | None
     uvs2: List[KMSUv] | None
     uvs3: List[KMSUv] | None
+    
+    def __init__(self):
+        self.flag = 0
+        self.numVertex = 0
+        self.colorMap = 0
+        self.pad = 0
+        self.specularMap = 0
+        self.pad2 = 0
+        self.environmentMap = 0
+        self.pad3 = 0
+        self.vertexOffset = 0
+        self.pad4 = 0
+        self.normalOffset = 0
+        self.pad5 = 0
+        self.uvOffset = 0
+        self.pad6 = 0
+        self.uv2Offset = 0
+        self.pad7 = 0
+        self.uv3Offset = 0
+        self.pad8 = [0] * 7
+        
+        self.vertices = []
+        self.normals = []
+        self.uvs = None
+        self.uvs2 = None
+        self.uvs3 = None
     
     def fromFile(self, file: BufferedReader):
         self.flag, self.numVertex, self.colorMap, self.pad, \
@@ -270,7 +362,12 @@ class KMSVertexGroup:
         return self
     
     def writeToFile(self, file: BufferedWriter):
-        print("VertexGroup write TODO")
+        file.write(struct.pack("<17I", self.flag, self.numVertex, self.colorMap, self.pad, \
+        self.specularMap, self.pad2, self.environmentMap, self.pad3, \
+        self.vertexOffset, self.pad4, self.normalOffset, self.pad5, \
+        self.uvOffset, self.pad6, self.uv2Offset, self.pad7, \
+        self.uv3Offset))
+        file.write(struct.pack("<7I", 0, 0, 0, 0, 0, 0, 0))
         return
 
 
@@ -279,6 +376,12 @@ class KMSVertex:
     y: int
     z: int
     weight: int
+    
+    def __init__(self, x=0, y=0, z=0, weight=4096):
+        self.x = int(x)
+        self.y = int(y)
+        self.z = int(z)
+        self.weight = int(weight)
     
     def fromFile(self, file: BufferedReader):
         self.x, self.y, self.z, self.weight = struct.unpack("<hhhh", file.read(0x8))
@@ -295,6 +398,13 @@ class KMSNormal:
     flags: int
     
     isFace: bool
+    
+    def __init__(self, x=0, y=0, z=0, isFace=False):
+        self.x = int(x)
+        self.y = int(y)
+        self.z = int(z)
+        self.flags = 0x8fff
+        self.isFace = isFace
     
     def fromFile(self, file: BufferedReader):
         self.x, self.y, self.z, self.flags = struct.unpack("<hhhH", file.read(0x8))
@@ -314,6 +424,10 @@ class KMSNormal:
 class KMSUv:
     u: int
     v: int
+    
+    def __init__(self, u=0, v=0):
+        self.u = int(u)
+        self.v = int(v)
     
     def fromFile(self, file: BufferedReader):
         self.u, self.v = struct.unpack("<hh", file.read(0x4))

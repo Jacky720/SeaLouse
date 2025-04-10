@@ -43,16 +43,32 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
     faces = []
     materialIndices = []
     uvs = []
+    uvs2 = []
+    uvs3 = []
     weights = []
+    #bpy.context.scene.collection.children.link(bpy.data.collections.new("looseCoords"))
     for i, vertexGroup in enumerate(mesh.vertexGroups):
         faceIndexOffset = len(vertices)
         vertices += [(vert.x, vert.y, vert.z) for vert in vertexGroup.vertices]
-        normals += [(-nrm.x / 4095, -nrm.y / 4095, -nrm.z / 4095) for nrm in vertexGroup.normals]
+        #for j, vert in enumerate(vertexGroup.vertices):
+        #    target = bpy.data.objects.new(str(j), None)
+        #    target.empty_display_size = 0.001
+        #    target.location = [vert.x/1000, -vert.z/1000, vert.y/1000]
+        #    bpy.data.collections["looseCoords"].objects.link(target)
+        normals += [(-nrm.x / 4096, -nrm.y / 4096, -nrm.z / 4096) for nrm in vertexGroup.normals]
         weights += [vert.weight for vert in vertexGroup.vertices]
         if vertexGroup.uvs:
             uvs += [(uv.u / 4096, 1 - uv.v / 4096) for uv in vertexGroup.uvs]
         else:
             uvs += [(0, 0) for _ in range(len(vertexGroup.vertices))]
+        if vertexGroup.uvs2:
+            uvs2 += [(uv.u / 4096, 1 - uv.v / 4096) for uv in vertexGroup.uvs2]
+        else:
+            uvs2 += [(0, 0) for _ in range(len(vertexGroup.vertices))]
+        if vertexGroup.uvs3:
+            uvs3 += [(uv.u / 4096, 1 - uv.v / 4096) for uv in vertexGroup.uvs3]
+        else:
+            uvs3 += [(0, 0) for _ in range(len(vertexGroup.vertices))]
         flip = False
         for j in range(vertexGroup.numVertex):
             if vertexGroup.normals[j].isFace:
@@ -64,6 +80,25 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
                 flip = not flip
             else:
                 flip = False
+    
+    # Bounding box adjustment
+    for i, vert in enumerate(vertices):
+        if vert[0] < mesh.minPos.x:
+            vert = (mesh.minPos.x, vert[1], vert[2])
+        elif vert[0] > mesh.maxPos.x:
+            vert = (mesh.maxPos.x, vert[1], vert[2])
+        if vert[1] < mesh.minPos.y:
+            vert = (vert[0], mesh.minPos.y, vert[2])
+        elif vert[1] > mesh.maxPos.y:
+            vert = (vert[0], mesh.maxPos.y, vert[2])
+        if vert[2] < mesh.minPos.z:
+            vert = (vert[0], vert[1], mesh.minPos.z)
+        elif vert[2] > mesh.maxPos.z:
+            vert = (vert[0], vert[1], mesh.maxPos.z)
+        vertices[i] = vert
+    
+    #print("\n".join([str(x) for x in normals]))
+    
     objmesh = bpy.data.meshes.new("kmsMesh%d" % meshInd)
     obj = bpy.data.objects.new(objmesh.name, objmesh)
     obj.location = Vector(meshPos)
@@ -72,6 +107,7 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
     objmesh.from_pydata(vertices, [], faces)
     objmesh.normals_split_custom_set_from_vertices(normals)
     objmesh.update(calc_edges=True)
+    #print("\n".join([str(x.normal) for x in objmesh.vertices]))
     
     # Bone weights
     obj.vertex_groups.new(name="bone%d" % meshInd)
@@ -87,8 +123,8 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
     if apply_materials(mesh, obj, extract_dir):
         bm = bmesh.new()
         bm.from_mesh(objmesh)
-        #uv_layer = bm.loops.layers.uv.new("UVMap1")
-        uv_layer = bm.loops.layers.uv.verify()
+        uv_layer = bm.loops.layers.uv.new("UVMap1")
+        #uv_layer = bm.loops.layers.uv.verify()
         #bm.faces.layers.tex.verify()
         for i, face in enumerate(bm.faces):
             face.material_index = materialIndices[i]
@@ -98,6 +134,19 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
                 #print(l.vert)
                 #print(uvs[ind])
                 l[uv_layer].uv = Vector(uvs[ind])
+        if any(x != (0, 0) for x in uvs2):
+            uv_layer2 = bm.loops.layers.uv.new("UVMap2")
+            for i, face in enumerate(bm.faces):
+                for l in face.loops:
+                    ind = l.vert.index
+                    l[uv_layer2].uv = Vector(uvs2[ind])
+        if any(x != (0, 0) for x in uvs3):
+            uv_layer3 = bm.loops.layers.uv.new("UVMap3")
+            for i, face in enumerate(bm.faces):
+                for l in face.loops:
+                    ind = l.vert.index
+                    l[uv_layer3].uv = Vector(uvs3[ind])
+            
         bm.to_mesh(objmesh)
         bm.free()
     
@@ -110,6 +159,11 @@ def construct_armature(kms: KMS, kmsName: str):
     ob = bpy.data.objects.new(kmsName, amt)
     ob.name = kmsName
     bpy.data.collections.get(kmsName).objects.link(ob)
+    
+    ob["bboxMin"] = [kms.header.minPos.x, kms.header.minPos.y, kms.header.minPos.z]
+    ob["bboxMax"] = [kms.header.maxPos.x, kms.header.maxPos.y, kms.header.maxPos.z]
+    ob["kmsType"] = kms.header.kmsType
+    ob["strcode"] = kms.header.strcode
     
     bpy.context.view_layer.objects.active = ob
     bpy.ops.object.mode_set(mode='EDIT')
@@ -166,9 +220,14 @@ def get_texture(extract_dir: str, mapID: int) -> bpy.types.Image | None:
     if mapID == 0:
         return None
     mapName = "%d.tga" % mapID
+    #remapped = open("C:/Users/jackm/AppData/Roaming/Blender Foundation/Blender/3.6/scripts/addons/SeaLouse/tri/importer/ctxrmapping.txt", 'rt')
+    #for x in remapped.readlines():
+    #    if x.split()[1] == mapName:
+    #        mapName = x.split()[0]
+    #        break
     if bpy.data.images.get(mapName) is not None:
         return bpy.data.images.get(mapName)
-    mapPath = os.path.join(extract_dir, mapName)
+    mapPath = os.path.join(extract_dir, mapName) # "ctxr",
     if not os.path.exists(mapPath):
         return None
     bpy.data.images.load(mapPath)
@@ -178,8 +237,10 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
     if mesh.numVertexGroup == 0:
         return False
     
-    for i, vertexGroup in enumerate(mesh.vertexGroups):
+    for vertexGroup in mesh.vertexGroups:
         material = bpy.data.materials.new(obj.name)
+        # Save flag as custom property
+        material["flag"] = vertexGroup.flag
         # Enable Nodes
         material.use_nodes = True
         # Render properties
@@ -206,9 +267,12 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
             colorMap.colorspace_settings.name = 'sRGB'
             #colorMap.alpha_mode = "NONE"
             color_image.hide = True
-            color_image.label = "g_ColorMap%d" % i
+            color_image.name = "g_ColorMap"
+            color_image.label = "g_ColorMap"
             links.new(color_image.outputs['Color'], principled.inputs['Base Color'])
             links.new(color_image.outputs['Alpha'], principled.inputs['Alpha'])
+        elif vertexGroup.colorMap > 0:
+            material["colorMapFallback"] = vertexGroup.colorMap
         
         specularMap = get_texture(extract_dir, vertexGroup.specularMap)
         if specularMap is not None:
@@ -217,10 +281,13 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
             specular_image.image = specularMap
             specularMap.colorspace_settings.name = 'Non-Color'
             specular_image.hide = True
-            specular_image.label = "g_SpecularMap%d" % i
+            specular_image.name = "g_SpecularMap"
+            specular_image.label = "g_SpecularMap"
             links.new(specular_image.outputs['Alpha'], principled.inputs['Specular'])
+        elif vertexGroup.specularMap > 0:
+            material["specularMapFallback"] = vertexGroup.specularMap
         
-        envMap = get_texture(extract_dir, vertexGroup.colorMap)
+        envMap = get_texture(extract_dir, vertexGroup.environmentMap)
         if envMap is not None:
             env_image = nodes.new(type='ShaderNodeTexImage')
             env_image.location = 0,-120
@@ -228,8 +295,11 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
             if envMap != colorMap:
                 envMap.colorspace_settings.name = 'Non-Color'
             env_image.hide = True
-            env_image.label = "g_EnvironmentMap%d" % i
+            env_image.name = "g_EnvironmentMap"
+            env_image.label = "g_EnvironmentMap"
             links.new(env_image.outputs['Alpha'], principled.inputs['Metallic'])
+        elif vertexGroup.environmentMap > 0:
+            material["environmentMapFallback"] = vertexGroup.environmentMap
         
         obj.data.materials.append(material)
     return True

@@ -28,11 +28,32 @@ class CMDL:
         return self
     
     def writeToFile(self, file: BufferedWriter):
-        # TODO
         self.header.numSection = len(self.sections)
-        # self.header.tailOffset
+        self.tail.numFaces = len(self.tail.faces)
+        curSectionOffset = 0x10 + 0x20 * len(self.sections)
+        file.seek(curSectionOffset)
+        file.write(struct.pack("<3i", -1, -1, -1))
         for section in self.sections:
             section.dataSize = section.data.size * len(section.data.data)
+            section.dataOffset = curSectionOffset
+            curSectionOffset += section.dataSize
+            if curSectionOffset % 0x10 > 0:
+                file.seek(curSectionOffset + 0xC)
+                while ((file.tell() % 0x10) & 0xC) != 0xC:
+                    file.write(struct.pack("<i", -1))
+                curSectionOffset = file.tell() - 0xC
+        
+        self.header.tailOffset = curSectionOffset
+        
+        file.seek(0)
+        
+        self.header.writeToFile(file)
+        
+        for section in self.sections:
+            section.writeToFile(file)
+        
+        file.seek(self.header.tailOffset + 0xC)
+        self.tail.writeToFile(file)
             
         return
 
@@ -72,27 +93,41 @@ class CMDLSection:
     dataSize: int
     data: CMDLSectionData
     
-    def __init__(self):
-        self.magic = "xxxx"
+    def __init__(self, magic="xxxx"):
+        self.magic = bytes(magic)
         self.unknown_04 = 0
         self.unknown_06 = 2
         self.dataOffset = 0
         self.dataSize = 0
+        if self.magic == b"POS0":
+            self.data = CMDLPosData()
+            self.unknown_04 = 2
+        elif self.magic == b"NRM0":
+            self.data = CMDLNrmData()
+            self.unknown_04 = 9
+        elif self.magic == b"OIDX":
+            self.data = CMDLOIdxData()
+            self.unknown_04 = 0xA
+        elif self.magic[:3] == b"TEX":
+            self.data = CMDLTexData()
+            self.unknown_04 = 5
+        else:
+            self.data = None
     
     def fromFile(self, file: BufferedReader):
         self.magic = bytes(reversed(file.read(4)))
-        assert(self.magic in { "POS0", "NRM0", "OIDX" } or self.magic[:3] == b"TEX") # Unexpected section magic
+        assert(self.magic in { b"POS0", b"NRM0", b"OIDX" } or self.magic[:3] == b"TEX") # Unexpected section magic
         self.unknown_04, self.unknown_06, self.dataOffset, pad \
         = struct.unpack("<HHII", file.read(0xC))
         assert(pad == 0) # Expected zero
         self.dataSize, pad1, pad2, pad3 = struct.unpack("<IIII", file.read(0x10))
         assert(pad1 == 0 and pad2 == 0 and pad3 == 0) # Expected zero
         
-        if self.magic == "POS0":
+        if self.magic == b"POS0":
             self.data = CMDLPosData()
-        elif self.magic == "NRM0":
+        elif self.magic == b"NRM0":
             self.data = CMDLNrmData()
-        elif self.magic == "OIDX":
+        elif self.magic == b"OIDX":
             self.data = CMDLOIdxData()
         elif self.magic[:3] == b"TEX":
             self.data = CMDLTexData()
@@ -131,6 +166,9 @@ class CMDLSectionData:
 class CMDLPosData(CMDLSectionData): # Coordinates
     size = 0x10
     
+    def __init__(self):
+        self.data = []
+    
     def fromFile(self, file: BufferedReader, fullSize: int):
         vertCount = fullSize // size
         self.data = [struct.unpack("<ffff", file.read(0x10)) for _ in range(vertCount)]
@@ -144,6 +182,9 @@ class CMDLPosData(CMDLSectionData): # Coordinates
 
 class CMDLNrmData(CMDLSectionData): # Normals
     size = 4
+    
+    def __init__(self):
+        self.data = []
     
     def fromFile(self, file: BufferedReader, fullSize: int):
         vertCount = fullSize // size
@@ -197,6 +238,9 @@ class CMDLNrmData(CMDLSectionData): # Normals
 class CMDLTexData(CMDLSectionData): # UV maps
     size = 4
     
+    def __init__(self):
+        self.data = []
+    
     def fromFile(self, file: BufferedReader, fullSize: int):
         vertCount = fullSize // size
         # Everybody loves the half-precision float format (5 bit exponent, 10 bit mantissa)
@@ -210,6 +254,9 @@ class CMDLTexData(CMDLSectionData): # UV maps
 
 class CMDLOIdxData(CMDLSectionData): # Point back to KMS indices
     size = 4
+    
+    def __init__(self):
+        self.data = []
     
     def fromFile(self, file: BufferedReader, fullSize: int):
         vertCount = fullSize // size
@@ -268,19 +315,13 @@ class CMDLMesh:
     faceCount: int # x3
     unknown_2D: int # four bytes
     unknown_2E: bytes # 8 bytes, all 0x80
-    unknown_36: int # one byte
+    unknown_36: int # four bytes
     meshIndex: int
     subMeshIndex: int
     
     def __init__(self):
         self.minPos = KMSVector3()
-        self.minPos.x = 0.0
-        self.minPos.y = 0.0
-        self.minPos.z = 0.0
         self.maxPos = KMSVector3()
-        self.maxPos.x = 0.0
-        self.maxPos.y = 0.0
-        self.maxPos.z = 0.0
         self.unknown_18 = -1
         self.unknown_1C = 0
         self.startVertex = 0

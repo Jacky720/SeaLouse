@@ -30,20 +30,29 @@ bl_info = {
 
 import bpy
 from .kms.importer.kmsImportOperator import ImportMgsKms
+from .kms.exporter.kmsExportOperator import ExportMgsKms
 from .tri.importer.triImportOperator import ImportMgsTri
+from .util.utilOperators import SealouseObjectMenu, SLObjectClasses
 
 #
 # Add additional functions here
 #
 
-classes = (
+classes = {
     ImportMgsKms,
+    ExportMgsKms,
     ImportMgsTri,
-)
+}.union(SLObjectClasses)
 
 def menu_func_import(self, context):
     self.layout.operator(ImportMgsKms.bl_idname, text="KMS File for MGS2 (.kms)")
     self.layout.operator(ImportMgsTri.bl_idname, text="Dump TRI textures for MGS2 (.tri)")
+
+def menu_func_export(self, context):
+    self.layout.operator(ExportMgsKms.bl_idname, text="KMS File for MGS2 (.kms)")
+
+def menu_func_utils(self, context):
+    self.layout.menu(SealouseObjectMenu.bl_idname)
 
 def register():
     from . import properties
@@ -55,6 +64,8 @@ def register():
         bpy.utils.register_class(cls)
     
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
+    bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
+    bpy.types.VIEW3D_MT_object.append(menu_func_utils)
 
 def unregister():
     from . import properties
@@ -66,6 +77,8 @@ def unregister():
         bpy.utils.unregister_class(cls)
     
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+    bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
+    bpy.types.VIEW3D_MT_object.remove(menu_func_utils)
 
 if __name__ == '__main__':
     register()

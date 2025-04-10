@@ -2,3 +2,7 @@
 /kms/importer/__pycache__
 /tri/importer/__pycache__
 /__pycache__
+/cmdl/__pycache__
+/cmdl/exporter/__pycache__
+/kms/exporter/__pycache__
+/util/__pycache__
