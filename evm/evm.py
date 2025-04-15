@@ -467,15 +467,21 @@ class EVMUv:
         file.write(struct.pack("<hhI", self.u, self.v, self.unknown))
 
 class EVMWeights:
-    weights: List[int] # read 8, handle up to numWeights
+    weights: List[int] # read 4, handle up to numWeights
+    indices: List[int] # read 4, handle up to numWeights
     
     def __init__(self):
-        self.weights = [0] * 8
+        self.weights = [0] * 4
+        self.indices = [0] * 4
     
     def fromFile(self, file: BufferedReader):
-        self.weights = list(struct.unpack("<8B", file.read(8)))
+        weights = list(struct.unpack("<8B", file.read(8)))
+        self.indices = weights[4:]
+        self.weights = weights[:4]
         return self
     
     def writeToFile(self, file: BufferedWriter):
         for weight in self.weights:
             file.write(struct.pack("<B", weight))
+        for index in self.indices:
+            file.write(struct.pack("<B", index))

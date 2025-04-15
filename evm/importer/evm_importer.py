@@ -45,7 +45,8 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
     uvs = []
     uvs2 = []
     uvs3 = []
-    #weights = []
+    weights = []
+    boneIndices = []
     #bpy.context.scene.collection.children.link(bpy.data.collections.new("looseCoords"))
     for i, vertexGroup in enumerate(evm.meshes):
         faceIndexOffset = len(vertices)
@@ -56,7 +57,8 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
         #    target.location = [vert.x/1000, -vert.z/1000, vert.y/1000]
         #    bpy.data.collections["looseCoords"].objects.link(target)
         normals += [(-nrm.x / 4096, -nrm.y / 4096, -nrm.z / 4096) for nrm in vertexGroup.normals]
-        #weights += [vert.weight for vert in vertexGroup.vertices]
+        boneIndices += [vertexGroup.skinningTable + [vertexGroup.numSkin] for _ in vertexGroup.vertices]
+        weights += vertexGroup.weights # TODO: this may need to be optional
         if vertexGroup.uvs:
             uvs += [(uv.u / 4096, 1 - uv.v / 4096) for uv in vertexGroup.uvs]
         else:
@@ -112,17 +114,18 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
     #print("\n".join([str(x.normal) for x in objmesh.vertices]))
     
     # Bone weights
-    """
-    obj.vertex_groups.new(name="bone%d" % meshInd)
-    group = obj.vertex_groups["bone%d" % meshInd]
-    for i, x in enumerate(weights):
-        group.add([i], x / 4096, "REPLACE")
-    if mesh.parent: # 2 bones
-        obj.vertex_groups.new(name="bone%d" % mesh.parentInd)
-        parentGroup = obj.vertex_groups["bone%d" % mesh.parentInd]
-        for i, x in enumerate(weights):
-            parentGroup.add([i], 1 - x / 4096, "REPLACE")
-    """
+    for i, weight_list in enumerate(weights):
+        skinningTable = boneIndices[i]
+        numSkin = skinningTable[-1] # yes this channel packing is weird
+        for j in range(numSkin):
+            weight = weight_list.weights[j]
+            boneIndex = skinningTable[weight_list.indices[j] >> 2]
+            #if boneIndex == 0xff:
+            #    break
+            if not obj.vertex_groups.get("bone%d" % boneIndex):
+                obj.vertex_groups.new(name="bone%d" % boneIndex)
+            obj.vertex_groups["bone%d" % boneIndex].add([i], weight / 128, "REPLACE")
+    
     if apply_materials(evm, obj, extract_dir):
         bm = bmesh.new()
         bm.from_mesh(objmesh)
@@ -282,6 +285,9 @@ def apply_materials(evm: EVM, obj, extract_dir: str):
             links.new(specular_image.outputs['Alpha'], principled.inputs['Specular'])
         elif vertexGroup.specularMap > 0:
             material["specularMapFallback"] = vertexGroup.specularMap
+            principled.inputs['Specular'].default_value = 0.0
+        else:
+            principled.inputs['Specular'].default_value = 0.0
         
         envMap = get_texture(extract_dir, vertexGroup.environmentMap)
         if envMap is not None:

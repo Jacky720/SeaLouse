@@ -286,6 +286,9 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
             links.new(specular_image.outputs['Alpha'], principled.inputs['Specular'])
         elif vertexGroup.specularMap > 0:
             material["specularMapFallback"] = vertexGroup.specularMap
+            principled.inputs['Specular'].default_value = 0.0
+        else:
+            principled.inputs['Specular'].default_value = 0.0
         
         envMap = get_texture(extract_dir, vertexGroup.environmentMap)
         if envMap is not None:
