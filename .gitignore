@@ -6,3 +6,6 @@
 /cmdl/exporter/__pycache__
 /kms/exporter/__pycache__
 /util/__pycache__
+/evm/__pycache__
+/evm/exporter/__pycache__
+/evm/importer/__pycache__
