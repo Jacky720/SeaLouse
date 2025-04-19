@@ -57,20 +57,18 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
         #    target.location = [vert.x/1000, -vert.z/1000, vert.y/1000]
         #    bpy.data.collections["looseCoords"].objects.link(target)
         normals += [(-nrm.x / 4096, -nrm.y / 4096, -nrm.z / 4096) for nrm in vertexGroup.normals]
-        boneIndices += [vertexGroup.skinningTable + [vertexGroup.numSkin] for _ in vertexGroup.vertices]
-        weights += vertexGroup.weights # TODO: this may need to be optional
         if vertexGroup.uvs:
             uvs += [(uv.u / 4096, 1 - uv.v / 4096) for uv in vertexGroup.uvs]
         else:
-            uvs += [(0, 0) for _ in range(len(vertexGroup.vertices))]
+            uvs += [(0, 0) for _ in range(vertexGroup.numVertex)]
         if vertexGroup.uvs2:
             uvs2 += [(uv.u / 4096, 1 - uv.v / 4096) for uv in vertexGroup.uvs2]
         else:
-            uvs2 += [(0, 0) for _ in range(len(vertexGroup.vertices))]
+            uvs2 += [(0, 0) for _ in range(vertexGroup.numVertex)]
         if vertexGroup.uvs3:
             uvs3 += [(uv.u / 4096, 1 - uv.v / 4096) for uv in vertexGroup.uvs3]
         else:
-            uvs3 += [(0, 0) for _ in range(len(vertexGroup.vertices))]
+            uvs3 += [(0, 0) for _ in range(vertexGroup.numVertex)]
         flip = False
         for j in range(vertexGroup.numVertex):
             if vertexGroup.vertices[j].isFace:
@@ -114,17 +112,26 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
     #print("\n".join([str(x.normal) for x in objmesh.vertices]))
     
     # Bone weights
-    for i, weight_list in enumerate(weights):
-        skinningTable = boneIndices[i]
-        numSkin = skinningTable[-1] # yes this channel packing is weird
-        for j in range(numSkin):
-            weight = weight_list.weights[j]
-            boneIndex = skinningTable[weight_list.indices[j] >> 2]
-            #if boneIndex == 0xff:
-            #    break
-            if not obj.vertex_groups.get("bone%d" % boneIndex):
-                obj.vertex_groups.new(name="bone%d" % boneIndex)
-            obj.vertex_groups["bone%d" % boneIndex].add([i], weight / 128, "REPLACE")
+    i = 0
+    vgroups = obj.vertex_groups
+    for vertexGroup in evm.meshes:
+        if vertexGroup.weights is None:
+            i += vertexGroup.numVertex
+            continue
+        
+        for skinIndex in vertexGroup.skinningTable:
+            if skinIndex == 0xff:
+                continue
+            skinName = "bone%d" % skinIndex
+            if not vgroups.get(skinName):
+                vgroups.new(name=skinName)
+        
+        for weight_list in vertexGroup.weights:
+            for j in range(vertexGroup.numSkin):
+                weight = weight_list.weights[j]
+                boneIndex = vertexGroup.skinningTable[weight_list.indices[j] >> 2]
+                vgroups["bone%d" % boneIndex].add([i], weight / 128, "ADD")
+            i += 1
     
     if apply_materials(evm, obj, extract_dir):
         bm = bmesh.new()

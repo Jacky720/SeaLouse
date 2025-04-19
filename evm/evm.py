@@ -34,9 +34,10 @@ class EVM:
         return self
     
     def writeToFile(self, file: BufferedWriter, vanilla_mode: bool = False):
-        self.header.numMesh = len(self.meshes)
-        if not vanilla_mode:
-            self.header.numBones = len(self.meshes)
+        self.header.numMeshes = len(self.meshes)
+        self.header.numBones = len(self.bones)
+        self.header.numUnknown = len(self.bones)
+        self.header.meshOffset = 0x40 + 0x40 * len(self.bones)
         i = 0
         for mesh in self.meshes:
             mesh.numVertexGroup = len(mesh.vertexGroups)
@@ -391,12 +392,14 @@ class EVMMesh:
         return self
     
     def writeToFile(self, file: BufferedWriter):
-        file.write(struct.pack("<17I", self.flag, self.numVertex, self.colorMap, self.pad, \
-        self.specularMap, self.pad2, self.environmentMap, self.pad3, \
-        self.vertexOffset, self.pad4, self.normalOffset, self.pad5, \
-        self.uvOffset, self.pad6, self.uv2Offset, self.pad7, \
-        self.uv3Offset))
-        file.write(struct.pack("<7I", 0, 0, 0, 0, 0, 0, 0))
+        file.write(struct.pack("<10I", self.flag, self.pad, self.colorMap, self.pad2, \
+        self.specularMap, self.pad3, self.environmentMap, self.pad4, \
+        self.numVertex, self.numSkin))
+        for boneIndex in self.skinningTable:
+            file.write(struct.pack("<B", boneIndex))
+        file.write(struct.pack("<16I", self.vertexOffset, self.pad5, self.normalOffset, self.pad6, \
+        self.uvOffset, self.pad7, self.uv2Offset, self.pad8, \
+        self.uv3Offset, self.pad9, self.weightOffset, 0, 0, 0, 0, 0))
         return
 
 
@@ -405,6 +408,7 @@ class EVMVertex:
     y: int
     z: int
     flags: int
+    isFace: bool
     
     def __init__(self, x=0, y=0, z=0, isFace=False):
         self.x = int(x)

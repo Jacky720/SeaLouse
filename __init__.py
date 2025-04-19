@@ -45,7 +45,7 @@ classes = {
     ExportMgsKms,
     ImportMgsTri,
     ImportMgsEvm,
-    #ExportMgsEvm,
+    ExportMgsEvm,
 }.union(SLObjectClasses)
 
 def menu_func_import(self, context):
@@ -55,6 +55,7 @@ def menu_func_import(self, context):
 
 def menu_func_export(self, context):
     self.layout.operator(ExportMgsKms.bl_idname, text="KMS File for MGS2 (.kms)")
+    self.layout.operator(ExportMgsEvm.bl_idname, text="EVM File for MGS2 (.evm)")
 
 def menu_func_utils(self, context):
     self.layout.menu(SealouseObjectMenu.bl_idname)
