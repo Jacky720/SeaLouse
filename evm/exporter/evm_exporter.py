@@ -51,7 +51,14 @@ def main(evm_file: str, collection_name: str):
             evmBone.relativePos.x -= bone.parent.head.x
             evmBone.relativePos.y -= bone.parent.head.y
             evmBone.relativePos.z -= bone.parent.head.z
-        # minPos and maxPos?
+        # TODO: actual per-bone calculation here
+        mesh = [x for x in collection.all_objects if x.type == "MESH"][0]
+        evmBone.minPos.x = mesh.bound_box[0][0]
+        evmBone.minPos.y = mesh.bound_box[0][1]
+        evmBone.minPos.z = mesh.bound_box[0][2]
+        evmBone.maxPos.x = mesh.bound_box[6][0]
+        evmBone.maxPos.y = mesh.bound_box[6][1]
+        evmBone.maxPos.z = mesh.bound_box[6][2]
     bpy.ops.object.mode_set(mode='OBJECT')
     
     for obj in collection.all_objects:
@@ -71,10 +78,8 @@ def main(evm_file: str, collection_name: str):
 
             if "flag" in mat:
                 mesh.flag = mat["flag"]
-            elif obj.name == "evmMesh0":
-                mesh.flag = 760
             else:
-                mesh.flag = 761
+                mesh.flag = 760
             
             nodes = mat.node_tree.nodes
             if nodes.get("g_ColorMap") is not None:
@@ -123,6 +128,10 @@ def main(evm_file: str, collection_name: str):
         startI = 0
         superSkinningTable = set()
         for i, mesh in enumerate(evm.meshes):
+            # Take care of the "single-weight" flag
+            if mesh.flag == 760 and mesh.skinningTable.count(255) < 7:
+                mesh.flag = 72
+            
             if len(superSkinningTable.union([x for x in mesh.skinningTable if x != 0xff])) <= 8:
                 superSkinningTable = superSkinningTable.union([x for x in mesh.skinningTable if x != 0xff])
             else: # table full
@@ -138,7 +147,7 @@ def main(evm_file: str, collection_name: str):
         # Last time
         for j in range(startI, len(evm.meshes)):
             evm.meshes[j].skinningTable.sort()
-            
+                
         
         allVertsWritten: List[List[int]] = [[] for _ in range(len(evm.meshes))]
         allSkinningTables: List[List[int]] = [[] for _ in range(len(evm.meshes))]
