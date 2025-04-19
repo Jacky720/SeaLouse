@@ -95,7 +95,7 @@ class EVM:
                 curExDataOffset = (curExDataOffset + 0xf) & ~0xf
 
         for mesh in self.meshes:
-            if mesh.uvs != None and any((x.u, x.v) != (0, 4096) for x in mesh.uvs):
+            if mesh.uvs != None and any((x.u, x.v) != (0, 0) for x in mesh.uvs):
                 mesh.uvOffset = curExDataOffset
                 curExDataOffset += 0x8 * mesh.numVertex
             else:
@@ -104,7 +104,7 @@ class EVM:
             if curExDataOffset % 0x10 > 0:
                 curExDataOffset = (curExDataOffset + 0xf) & ~0xf
         for mesh in self.meshes:
-            if mesh.uvs2 != None and any((x.u, x.v) != (0, 4096) for x in mesh.uvs2):
+            if mesh.uvs2 != None and any((x.u, x.v) != (0, 0) for x in mesh.uvs2):
                 mesh.uv2Offset = curExDataOffset
                 curExDataOffset += 0x8 * mesh.numVertex
             else:
@@ -113,7 +113,7 @@ class EVM:
             if curExDataOffset % 0x10 > 0:
                 curExDataOffset = (curExDataOffset + 0xf) & ~0xf
         for mesh in self.meshes:
-            if mesh.uvs3 != None and any((x.u, x.v) != (0, 4096) for x in mesh.uvs3):
+            if mesh.uvs3 != None and any((x.u, x.v) != (0, 0) for x in mesh.uvs3):
                 mesh.uv3Offset = curExDataOffset
                 curExDataOffset += 0x8 * mesh.numVertex
             else:

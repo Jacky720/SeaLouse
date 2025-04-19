@@ -60,15 +60,15 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
         if vertexGroup.uvs:
             uvs += [(uv.u / 4096, 1 - uv.v / 4096) for uv in vertexGroup.uvs]
         else:
-            uvs += [(0, 0) for _ in range(vertexGroup.numVertex)]
+            uvs += [(0, 1) for _ in range(vertexGroup.numVertex)]
         if vertexGroup.uvs2:
             uvs2 += [(uv.u / 4096, 1 - uv.v / 4096) for uv in vertexGroup.uvs2]
         else:
-            uvs2 += [(0, 0) for _ in range(vertexGroup.numVertex)]
+            uvs2 += [(0, 1) for _ in range(vertexGroup.numVertex)]
         if vertexGroup.uvs3:
             uvs3 += [(uv.u / 4096, 1 - uv.v / 4096) for uv in vertexGroup.uvs3]
         else:
-            uvs3 += [(0, 0) for _ in range(vertexGroup.numVertex)]
+            uvs3 += [(0, 1) for _ in range(vertexGroup.numVertex)]
         flip = False
         for j in range(vertexGroup.numVertex):
             if vertexGroup.vertices[j].isFace:
@@ -147,13 +147,13 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
                 #print(l.vert)
                 #print(uvs[ind])
                 l[uv_layer].uv = Vector(uvs[ind])
-        if any(x != (0, 0) for x in uvs2):
+        if any(x != (0, 1) for x in uvs2):
             uv_layer2 = bm.loops.layers.uv.new("UVMap2")
             for i, face in enumerate(bm.faces):
                 for l in face.loops:
                     ind = l.vert.index
                     l[uv_layer2].uv = Vector(uvs2[ind])
-        if any(x != (0, 0) for x in uvs3):
+        if any(x != (0, 1) for x in uvs3):
             uv_layer3 = bm.loops.layers.uv.new("UVMap3")
             for i, face in enumerate(bm.faces):
                 for l in face.loops:

@@ -10,6 +10,11 @@ def getVertWeight(vert) -> float:
         return vert.groups[1].weight
     return 0.0 # vertex is only weighted to parent
 
+# TODO: this and above should probably be from a shared utils file
+def boneIndexFromVertGroup(vertexGroup, obj) -> int:
+    boneName = obj.vertex_groups[vertexGroup.group].name
+    return int(boneName.split("bone")[1])
+
 def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
     cmdl = CMDL()
     
@@ -25,7 +30,10 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
 
     for mesh in meshes:
         for vertex in mesh.data.vertices:
-            posSection.data.data.append((vertex.co.x, vertex.co.y, vertex.co.z, getVertWeight(vertex)))
+            if evmMode:
+                posSection.data.data.append((vertex.co.x/16, vertex.co.y/16, vertex.co.z/16, 1.0))
+            else:
+                posSection.data.data.append((vertex.co.x, vertex.co.y, vertex.co.z, getVertWeight(vertex)))
             nrm = vertex.normal
             nrmSection.data.data.append((-nrm.x, -nrm.y, -nrm.z))
 
@@ -57,6 +65,29 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
     
     cmdl.sections += uv_sections
     
+    # EVM only- bone weights
+    if evmMode:
+        boniSection = CMDLSection(b"BONI")
+        bonwSection = CMDLSection(b"BONW")
+        vertIndexOffset = 0
+        for mesh in meshes:
+            kmsOidxLookup = list(mesh["kmsVertSideChannel"])
+            evmSkinLookup = list(mesh["evmSkinSideChannel"])
+            for i, vertex in enumerate(mesh.data.vertices):
+                skinningTable = list(evmSkinLookup[kmsOidxLookup.index(i) + vertIndexOffset])
+                boneIndices = [skinningTable.index(boneIndexFromVertGroup(x, mesh)) for x in vertex.groups]
+                #boneIndices = [boneIndexFromVertGroup(x, mesh) for x in vertex.groups]
+                boneWeights = [x.weight for x in vertex.groups]
+                while len(boneWeights) < 4:
+                    boneIndices.append(0)
+                    boneWeights.append(0.0)
+                boniSection.data.data.append(boneIndices)
+                bonwSection.data.data.append(boneWeights)
+            vertIndexOffset += len(mesh.data.vertices)
+        
+        cmdl.sections.append(boniSection)
+        cmdl.sections.append(bonwSection)
+    
     # Original (KMS) indexing
     oidxSection = CMDLSection(b"OIDX")
     
@@ -75,6 +106,8 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
     faceIndexOffset = 0
     
     for i, mesh in enumerate(meshes):
+        kmsOidxLookup = list(mesh["kmsVertSideChannel"])
+        
         cmdl.tail.numMeshes += len(mesh.material_slots)
         newMeshes = [CMDLMesh() for _ in range(len(mesh.material_slots))]
 
@@ -112,6 +145,19 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
             cmdlMesh.maxPos.x = mesh.bound_box[6][0]
             cmdlMesh.maxPos.y = mesh.bound_box[6][1]
             cmdlMesh.maxPos.z = mesh.bound_box[6][2]
+            if evmMode:
+                cmdlMesh.minPos.x /= 16
+                cmdlMesh.minPos.y /= 16
+                cmdlMesh.minPos.z /= 16
+                cmdlMesh.maxPos.x /= 16
+                cmdlMesh.maxPos.y /= 16
+                cmdlMesh.maxPos.z /= 16
+                skinningTable = list(evmSkinLookup[kmsOidxLookup.index(cmdlMesh.startVertex)])
+                for bone in skinningTable:
+                    if bone == 0xff:
+                        break
+                    cmdlMesh.bones.append(bone)
+                cmdlMesh.boneCount = len(cmdlMesh.bones)
             #for k in range(cmdlMesh.startVertex, cmdlMesh.startVertex + cmdlMesh.vertexCount):
 
             #print(cmdlMesh.startFace, cmdlMesh.faceCount)

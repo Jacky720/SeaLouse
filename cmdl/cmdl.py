@@ -102,15 +102,21 @@ class CMDLSection:
         if self.magic == b"POS0":
             self.data = CMDLPosData()
             self.unknown_04 = 2
+        elif self.magic == b"BONI":
+            self.data = CMDLBonIData()
+            self.unknown_04 = 4
+        elif self.magic[:3] == b"TEX":
+            self.data = CMDLTexData()
+            self.unknown_04 = 5
+        elif self.magic == b"BONW":
+            self.data = CMDLBonWData()
+            self.unknown_04 = 6
         elif self.magic == b"NRM0":
             self.data = CMDLNrmData()
             self.unknown_04 = 9
         elif self.magic == b"OIDX":
             self.data = CMDLOIdxData()
             self.unknown_04 = 0xA
-        elif self.magic[:3] == b"TEX":
-            self.data = CMDLTexData()
-            self.unknown_04 = 5
         else:
             self.data = None
     
@@ -268,6 +274,41 @@ class CMDLOIdxData(CMDLSectionData): # Point back to KMS indices
         for vert in self.data:
             file.write(struct.pack("<I", vert))
 
+class CMDLBonIData(CMDLSectionData): # Bone Indexes (EVM)
+    size = 4
+    
+    def __init__(self):
+        self.data = []
+    
+    def fromFile(self, file: BufferedReader, fullSize: int):
+        vertCount = fullSize // size
+        self.data = [list(struct.unpack("<4B", file.read(4))) for _ in range(vertCount)]
+        
+        return self
+    
+    def writeToFile(self, file: BufferedWriter):
+        for vert in self.data:
+            for boneIndex in vert:
+                file.write(struct.pack("<B", boneIndex))
+
+class CMDLBonWData(CMDLSectionData): # Bone weights (EVM)
+    size = 8
+    
+    def __init__(self):
+        self.data = []
+    
+    def fromFile(self, file: BufferedReader, fullSize: int):
+        vertCount = fullSize // size
+        # Everybody loves the half-precision float format (5 bit exponent, 10 bit mantissa)
+        self.data = [list(struct.unpack("<4e", file.read(8))) for _ in range(vertCount)]
+        
+        return self
+    
+    def writeToFile(self, file: BufferedWriter):
+        for vert in self.data:
+            for boneWeight in vert:
+                file.write(struct.pack("<e", boneWeight))
+
 
 class CMDLTail:
     numFaces: int
@@ -313,7 +354,8 @@ class CMDLMesh:
     vertexCount: int
     startFace: int
     faceCount: int # x3
-    unknown_2D: int # four bytes
+    bones: List[int]
+    boneCount: int # always zero for KMS
     unknown_2E: bytes # 8 bytes, all 0x80
     unknown_36: int # four bytes
     meshIndex: int
@@ -328,6 +370,8 @@ class CMDLMesh:
         self.vertexCount = 0
         self.startFace = 0
         self.faceCount = 0
+        self.boneCount = 0
+        self.bones = []
         self.unknown_2D = 0
         self.unknown_2E = b"\x80\x80\x80\x80\x80\x80\x80\x80"
         self.unknown_36 = 0
@@ -339,10 +383,11 @@ class CMDLMesh:
         self.maxPos.fromFile(file, True)
         self.unknown_18, self.unknown_1C, \
         self.startVertex, self.vertexCount, self.startFace, self.faceCount, \
-        self.unknown_2D = struct.unpack(">hBIIIII", file.read(23)) # this BS doesn't deserve hexadecimal
+        self.boneCount = struct.unpack(">hBIIIII", file.read(23)) # this BS doesn't deserve hexadecimal
         assert(self.unknown_18 == -1) # Expected -1
         assert(self.unknown_1C == 0) # Expected 0
-        assert(self.unknown_2D == 0) # Expected 0
+        for i in range(len(self.boneCount)):
+            self.bones.append(struct.unpack(">I", file.read(4))[0])
         self.unknown_2E = file.read(8)
         assert(self.unknown_2E == b"\x80\x80\x80\x80\x80\x80\x80\x80") # Expected... whatever this is
         self.unknown_36, self.meshIndex, self.subMeshIndex \
@@ -356,6 +401,8 @@ class CMDLMesh:
         self.maxPos.writeToFile(file, True)
         file.write(struct.pack(">hBIIIII", self.unknown_18, self.unknown_1C, \
         self.startVertex, self.vertexCount, self.startFace, self.faceCount, \
-        self.unknown_2D))
+        self.boneCount))
+        for bone in self.bones:
+            file.write(struct.pack(">I", bone))
         file.write(self.unknown_2E)
         file.write(struct.pack(">III", self.unknown_36, self.meshIndex, self.subMeshIndex))
