@@ -177,6 +177,7 @@ def construct_armature(evm: EVM, evmName: str):
     ob["bboxMax"] = [evm.header.maxPos.x, evm.header.maxPos.y, evm.header.maxPos.z]
     #ob["evmType"] = evm.header.evmType
     ob["strcode"] = evm.header.strcode
+    ob["flag"] = evm.header.flag
     
     bpy.context.view_layer.objects.active = ob
     bpy.ops.object.mode_set(mode='EDIT')

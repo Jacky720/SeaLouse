@@ -10,7 +10,7 @@ def getVertWeight(vert) -> float:
         return vert.groups[1].weight
     return 0.0 # vertex is only weighted to parent
 
-def main(cmdl_file: str, collection_name: str):
+def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
     cmdl = CMDL()
     
     collection = bpy.data.collections[collection_name]

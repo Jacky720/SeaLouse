@@ -14,18 +14,45 @@ def getVertWeight(vert) -> int:
         return int(vert.groups[1].weight * 4096)
     return 0 # vertex is only weighted to parent
 
+def boneIndexFromVertGroup(vertexGroup, obj) -> int:
+    boneName = obj.vertex_groups[vertexGroup.group].name
+    return int(boneName.split("bone")[1])
+
+
 def main(evm_file: str, collection_name: str):
     evm = EVM()
     
     collection = bpy.data.collections[collection_name]
     
     amt = [x for x in collection.all_objects if x.type == "ARMATURE"][0]
-    evm.header.evmType = amt["evmType"]
+    #evm.header.evmType = amt["evmType"]
     evm.header.strcode = amt["strcode"]
+    evm.header.flag = amt["flag"]
     evm.header.minPos = EVMVector3(amt["bboxMin"][0], amt["bboxMin"][1], amt["bboxMin"][2])
     evm.header.maxPos = EVMVector3(amt["bboxMax"][0], amt["bboxMax"][1], amt["bboxMax"][2])
     
-    bones = amt.data.bones
+    evm.bones = [EVMBone() for _ in range(len(amt.data.bones))]
+    
+    bpy.ops.object.select_all(action='DESELECT')
+    amt.select_set(True)
+    bpy.context.view_layer.objects.active = amt
+    bpy.ops.object.mode_set(mode='EDIT')
+    for bone in amt.data.edit_bones:
+        print(bone.name)
+        evmBone = evm.bones[int(bone.name.split("bone")[1])]
+        evmBone.worldPos.x = bone.head.x
+        evmBone.worldPos.y = bone.head.y
+        evmBone.worldPos.z = bone.head.z
+        evmBone.relativePos.x = bone.head.x
+        evmBone.relativePos.y = bone.head.y
+        evmBone.relativePos.z = bone.head.z
+        if bone.parent:
+            evmBone.parentInd = int(bone.parent.name.split("bone")[1])
+            evmBone.relativePos.x -= bone.parent.head.x
+            evmBone.relativePos.y -= bone.parent.head.y
+            evmBone.relativePos.z -= bone.parent.head.z
+        # minPos and maxPos?
+    bpy.ops.object.mode_set(mode='OBJECT')
     
     for obj in collection.all_objects:
         if obj.type != "MESH":
@@ -34,77 +61,90 @@ def main(evm_file: str, collection_name: str):
         # For now, let's assume direct re-export (so meshes and bones are still tightly linked, not suitable for distribution)
         #evm.header.numMesh += 1
         #evm.header.numBones += 1
-        evmMesh = EVMMesh()
-        evmMesh.flag = 1
-
-        evmMesh.pos.x = obj.location.x
-        evmMesh.pos.y = obj.location.y
-        evmMesh.pos.z = obj.location.z
-        evmMesh.minPos.x = obj.bound_box[0][0]
-        evmMesh.minPos.y = obj.bound_box[0][1]
-        evmMesh.minPos.z = obj.bound_box[0][2]
-        evmMesh.maxPos.x = obj.bound_box[6][0]
-        evmMesh.maxPos.y = obj.bound_box[6][1]
-        evmMesh.maxPos.z = obj.bound_box[6][2]
-
-        bone = bones["bone" + obj.name.split('Mesh')[1]]
-        evmMesh.parentInd = -1
-        if bone.parent:
-            evmMesh.parentInd = int(bone.parent.name[4:])
-            evmMesh.parent = evm.meshes[evmMesh.parentInd]
-        # Recursively fix position
-        curMesh = evmMesh.parent
-        while curMesh:
-            evmMesh.pos.x -= curMesh.pos.x
-            evmMesh.pos.y -= curMesh.pos.y
-            evmMesh.pos.z -= curMesh.pos.z
-            curMesh = curMesh.parent
-            
         
         # Create vertex groups from materials
         for materialSlot in obj.material_slots:
             #evmMesh.numVertexGroup += 1
             mat = materialSlot.material
-            
-            vertexGroup = EVMVertexGroup()
+            mesh = EVMMesh()
+            #evmMesh.flag = 1
+
             if "flag" in mat:
-                vertexGroup.flag = mat["flag"]
+                mesh.flag = mat["flag"]
             elif obj.name == "evmMesh0":
-                vertexGroup.flag = 760
+                mesh.flag = 760
             else:
-                vertexGroup.flag = 761
+                mesh.flag = 761
             
             nodes = mat.node_tree.nodes
             if nodes.get("g_ColorMap") is not None:
-                vertexGroup.colorMap = int(nodes["g_ColorMap"].image.name.split('.')[0])
+                mesh.colorMap = int(nodes["g_ColorMap"].image.name.split('.')[0])
             elif mat.get("colorMapFallback") is not None:
-                vertexGroup.colorMap = mat["colorMapFallback"]
+                mesh.colorMap = mat["colorMapFallback"]
 
             if nodes.get("g_SpecularMap") is not None:
-                vertexGroup.specularMap = int(nodes["g_SpecularMap"].image.name.split('.')[0])
+                mesh.specularMap = int(nodes["g_SpecularMap"].image.name.split('.')[0])
             elif mat.get("specularMapFallback") is not None:
-                vertexGroup.specularMap = mat["specularMapFallback"]
+                mesh.specularMap = mat["specularMapFallback"]
 
             if nodes.get("g_EnvironmentMap") is not None:
-                vertexGroup.environmentMap = int(nodes["g_EnvironmentMap"].image.name.split('.')[0])
+                mesh.environmentMap = int(nodes["g_EnvironmentMap"].image.name.split('.')[0])
             elif mat.get("environmentMapFallback") is not None:
-                vertexGroup.environmentMap = mat["environmentMapFallback"]
+                mesh.environmentMap = mat["environmentMapFallback"]
 
             if len(obj.data.uv_layers) > 0:
-                vertexGroup.uvs = []
+                mesh.uvs = []
             if len(obj.data.uv_layers) > 1:
-                vertexGroup.uvs2 = []
+                mesh.uvs2 = []
             if len(obj.data.uv_layers) > 2:
-                vertexGroup.uvs3 = []
+                mesh.uvs3 = []
+            
+            mesh.weights = []
                 
-            evmMesh.vertexGroups.append(vertexGroup)
+            evm.meshes.append(mesh)
         
-        allVertsWritten: List[List[int]] = [[] for _ in range(len(evmMesh.vertexGroups))]
-        flip = False
+        # Skinning tables - intermediate step for weights later
         for polygon in obj.data.polygons:
             assert(polygon.loop_total == 3) # Not triangulated!
             polyMat = polygon.material_index
-            vertexGroup = evmMesh.vertexGroups[polyMat]
+            mesh = evm.meshes[polyMat]
+            loopIndices = list(range(polygon.loop_start, polygon.loop_start + 3))
+            vertexIndices = [obj.data.loops[i].vertex_index for i in loopIndices]
+            for vertIndex in vertexIndices:
+                vert = obj.data.vertices[vertIndex]
+                assert(len(vert.groups) <= 4) # Please Limit Total weights per vertex
+                for bone in vert.groups:
+                    boneIndex = boneIndexFromVertGroup(bone, obj)
+                    if boneIndex not in mesh.skinningTable:
+                        mesh.skinningTable[mesh.numSkin] = boneIndex # If this errors, you have too many bones on one material
+                        mesh.numSkin += 1
+        
+        # Join skinning tables where possible
+        startI = 0
+        superSkinningTable = set()
+        for i, mesh in enumerate(evm.meshes):
+            if len(superSkinningTable.union([x for x in mesh.skinningTable if x != 0xff])) <= 8:
+                superSkinningTable = superSkinningTable.union([x for x in mesh.skinningTable if x != 0xff])
+            else: # table full
+                processedSkinningTable = sorted(list(superSkinningTable))
+                while len(processedSkinningTable) < 8:
+                    processedSkinningTable.append(255)
+                #print("Using processedSkinningTable:", processedSkinningTable, "failed to join with", mesh.skinningTable)
+                for j in range(startI, i):
+                    evm.meshes[j].skinningTable = processedSkinningTable
+                startI = i
+                superSkinningTable = set([x for x in mesh.skinningTable if x != 0xff])
+            mesh.numSkin = 0
+        # Last time
+        for j in range(startI, len(evm.meshes)):
+            evm.meshes[j].skinningTable.sort()
+            
+        
+        allVertsWritten: List[List[int]] = [[] for _ in range(len(evm.meshes))]
+        flip = False
+        for polygon in obj.data.polygons:
+            polyMat = polygon.material_index
+            vertexGroup = evm.meshes[polyMat]
             vertsWritten = allVertsWritten[polyMat]
             loopIndices = list(range(polygon.loop_start, polygon.loop_start + 3))
             loopIndices = [loopIndices[0], loopIndices[2], loopIndices[1]]
@@ -122,14 +162,19 @@ def main(evm_file: str, collection_name: str):
                 vertsWritten += [vertexIndices[compress_add_index]]
                 vert3 = obj.data.vertices[vertexIndices[compress_add_index]]
                 vertexGroup.vertices += [EVMVertex(round(vert3.co.x), round(vert3.co.y), round(vert3.co.z), \
-                                                   getVertWeight(vert3))]
-                vertexGroup.normals += [EVMNormal(vert3.normal.x * -4096, vert3.normal.y * -4096, vert3.normal.z * -4096, True)]
+                                                   True)]
+                vertexGroup.normals += [EVMNormal(vert3.normal.x * -4096, vert3.normal.y * -4096, vert3.normal.z * -4096)]
                 if len(obj.data.uv_layers) > 0:
                     vertexGroup.uvs += [evmUvFromLayerAndLoop(obj, 0, loopIndices[compress_add_index])]
                 if len(obj.data.uv_layers) > 1:
                     vertexGroup.uvs2 += [evmUvFromLayerAndLoop(obj, 1, loopIndices[compress_add_index])]
                 if len(obj.data.uv_layers) > 2:
                     vertexGroup.uvs3 += [evmUvFromLayerAndLoop(obj, 2, loopIndices[compress_add_index])]
+                vertexGroup.weights += [EVMWeights(
+                                        [int(x.weight*128) for x in vert3.groups],
+                                        [vertexGroup.skinningTable.index(boneIndexFromVertGroup(x, obj)) << 2 for x in vert3.groups])]
+                if len(vert3.groups) > vertexGroup.numSkin:
+                    vertexGroup.numSkin = len(vert3.groups)
                 flip = not flip
             else:
                 # add all three :(
@@ -138,14 +183,14 @@ def main(evm_file: str, collection_name: str):
                 vert2 = obj.data.vertices[vertexIndices[1]]
                 vert3 = obj.data.vertices[vertexIndices[2]]
                 vertexGroup.vertices += [
-                    EVMVertex(round(vert1.co.x), round(vert1.co.y), round(vert1.co.z), getVertWeight(vert1)),
-                    EVMVertex(round(vert2.co.x), round(vert2.co.y), round(vert2.co.z), getVertWeight(vert2)),
-                    EVMVertex(round(vert3.co.x), round(vert3.co.y), round(vert3.co.z), getVertWeight(vert3))
+                    EVMVertex(round(vert1.co.x), round(vert1.co.y), round(vert1.co.z), False),
+                    EVMVertex(round(vert2.co.x), round(vert2.co.y), round(vert2.co.z), False),
+                    EVMVertex(round(vert3.co.x), round(vert3.co.y), round(vert3.co.z), True)
                 ]
                 vertexGroup.normals += [
-                    EVMNormal(vert1.normal.x * -4096, vert1.normal.y * -4096, vert1.normal.z * -4096, False),
-                    EVMNormal(vert2.normal.x * -4096, vert2.normal.y * -4096, vert2.normal.z * -4096, False),
-                    EVMNormal(vert3.normal.x * -4096, vert3.normal.y * -4096, vert3.normal.z * -4096, True)
+                    EVMNormal(vert1.normal.x * -4096, vert1.normal.y * -4096, vert1.normal.z * -4096),
+                    EVMNormal(vert2.normal.x * -4096, vert2.normal.y * -4096, vert2.normal.z * -4096),
+                    EVMNormal(vert3.normal.x * -4096, vert3.normal.y * -4096, vert3.normal.z * -4096)
                 ]
                 if len(obj.data.uv_layers) > 0:
                     vertexGroup.uvs += [
@@ -165,10 +210,24 @@ def main(evm_file: str, collection_name: str):
                         evmUvFromLayerAndLoop(obj, 2, loopIndices[1]),
                         evmUvFromLayerAndLoop(obj, 2, loopIndices[2])
                     ]
+                vertexGroup.weights += [EVMWeights(
+                                        [int(x.weight*128) for x in vert1.groups],
+                                        [vertexGroup.skinningTable.index(boneIndexFromVertGroup(x, obj)) << 2 for x in vert1.groups]),
+                                        EVMWeights(
+                                        [int(x.weight*128) for x in vert2.groups],
+                                        [vertexGroup.skinningTable.index(boneIndexFromVertGroup(x, obj)) << 2 for x in vert2.groups]),
+                                        EVMWeights(
+                                        [int(x.weight*128) for x in vert3.groups],
+                                        [vertexGroup.skinningTable.index(boneIndexFromVertGroup(x, obj)) << 2 for x in vert3.groups])]
+                if len(vert1.groups) > vertexGroup.numSkin:
+                    vertexGroup.numSkin = len(vert1.groups)
+                if len(vert2.groups) > vertexGroup.numSkin:
+                    vertexGroup.numSkin = len(vert2.groups)
+                if len(vert3.groups) > vertexGroup.numSkin:
+                    vertexGroup.numSkin = len(vert3.groups)
                 flip = False
         
-        obj['evmVertSideChannel'] = sum(allVertsWritten, []) # flatten
-        evm.meshes.append(evmMesh)
+        obj['kmsVertSideChannel'] = sum(allVertsWritten, []) # flatten
     
     with open(evm_file, "wb") as f:
         evm.writeToFile(f)

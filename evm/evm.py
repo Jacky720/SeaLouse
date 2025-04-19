@@ -2,6 +2,17 @@ from __future__ import annotations
 from io import BufferedReader, BufferedWriter
 import struct
 
+def readPad(padArray: List[int], file: BufferedReader):
+    for pad in range(len(padArray)):
+        padArray[pad] = struct.unpack("<I", file.read(4))
+        if padArray[pad] != 0:
+            print("Unexpected non-zero pad detected.")
+
+def writePad(padArray: List[int], file: BufferedWriter):
+    for pad in padArray:
+        file.write(struct.pack("<I", pad))
+        if pad != 0:
+            print("Unexpected non-zero pad written.")
 
 class EVM:
     header: EVMHeader
@@ -40,111 +51,113 @@ class EVM:
         self.header.meshOffset = 0x40 + 0x40 * len(self.bones)
         i = 0
         for mesh in self.meshes:
-            mesh.numVertexGroup = len(mesh.vertexGroups)
-            print("Mesh %d: %d vertex groups" % (i, mesh.numVertexGroup))
+            print("Mesh %d" % i)
             i += 1
-            for vertexGroup in mesh.vertexGroups:
-                vertCount = len(vertexGroup.vertices)
-                vertexGroup.numVertex = vertCount
-                # Sanity checks
-                if len(vertexGroup.normals) != vertCount:
-                    print("ERROR: Normal count does not match vertex count")
-                    return
-                if vertexGroup.uvs != None and len(vertexGroup.uvs) != vertCount:
-                    print("Error: UV 1 count does not match vertex count")
-                    return
-                if vertexGroup.uvs2 != None and len(vertexGroup.uvs2) != vertCount:
-                    print("Error: UV 2 count does not match vertex count")
-                    return
-                if vertexGroup.uvs3 != None and len(vertexGroup.uvs3) != vertCount:
-                    print("Error: UV 3 count does not match vertex count")
-                    return
+            vertCount = len(mesh.vertices)
+            mesh.numVertex = vertCount
+            # Sanity checks
+            if len(mesh.normals) != vertCount:
+                print("ERROR: Normal count does not match vertex count")
+                return
+            if mesh.uvs != None and len(mesh.uvs) != vertCount:
+                print("Error: UV 1 count does not match vertex count")
+                return
+            if mesh.uvs2 != None and len(mesh.uvs2) != vertCount:
+                print("Error: UV 2 count does not match vertex count")
+                return
+            if mesh.uvs3 != None and len(mesh.uvs3) != vertCount:
+                print("Error: UV 3 count does not match vertex count")
+                return
+            if mesh.weights != None and len(mesh.weights) != vertCount:
+                print("Error: Weight count does not match vertex count")
+                return
         
-        firstMeshOffset = 0x40
-        firstVertexGroupOffset = firstMeshOffset + 0x50 * self.header.numMesh
-        firstExDataOffset = firstVertexGroupOffset + 0x60 * sum(mesh.numVertexGroup for mesh in self.meshes)
+        firstExDataOffset = self.header.meshOffset + 0x70 * self.header.numMeshes
         
         
         file.seek(0)
         
         self.header.writeToFile(file)
         
-        curVertexGroupOffset = firstVertexGroupOffset
-        for mesh in self.meshes:
-            mesh.vertexGroupOffset = curVertexGroupOffset
-            curVertexGroupOffset += 0x60 * mesh.numVertexGroup
-            mesh.writeToFile(file)
+        for bone in self.bones:
+            bone.writeToFile(file)
         
         curExDataOffset = firstExDataOffset
         for mesh in self.meshes:
-            for vertexGroup in mesh.vertexGroups:
-                vertexGroup.vertexOffset = curExDataOffset
-                curExDataOffset += 0x8 * vertexGroup.numVertex
-                if curExDataOffset % 0x10 > 0:
-                    curExDataOffset = (curExDataOffset + 0xf) & ~0xf # fun rounding-up trick
+            mesh.vertexOffset = curExDataOffset
+            curExDataOffset += 0x8 * mesh.numVertex
+            if curExDataOffset % 0x10 > 0:
+                curExDataOffset = (curExDataOffset + 0xf) & ~0xf # fun rounding-up trick
         for mesh in self.meshes:
-            for vertexGroup in mesh.vertexGroups:
-                vertexGroup.normalOffset = curExDataOffset
-                curExDataOffset += 0x8 * vertexGroup.numVertex
-                if curExDataOffset % 0x10 > 0:
-                    curExDataOffset = (curExDataOffset + 0xf) & ~0xf
+            mesh.normalOffset = curExDataOffset
+            curExDataOffset += 0x8 * mesh.numVertex
+            if curExDataOffset % 0x10 > 0:
+                curExDataOffset = (curExDataOffset + 0xf) & ~0xf
 
         for mesh in self.meshes:
-            for vertexGroup in mesh.vertexGroups:
-                if vertexGroup.uvs != None:
-                    vertexGroup.uvOffset = curExDataOffset
-                    curExDataOffset += 0x4 * vertexGroup.numVertex
-                else:
-                    vertexGroup.uvOffset = 0
-                if curExDataOffset % 0x10 > 0:
-                    curExDataOffset = (curExDataOffset + 0xf) & ~0xf
-            for vertexGroup in mesh.vertexGroups:
-                if vertexGroup.uvs2 != None:
-                    vertexGroup.uv2Offset = curExDataOffset
-                    curExDataOffset += 0x4 * vertexGroup.numVertex
-                else:
-                    vertexGroup.uv2Offset = 0
-                if curExDataOffset % 0x10 > 0:
-                    curExDataOffset = (curExDataOffset + 0xf) & ~0xf
-            for vertexGroup in mesh.vertexGroups:
-                if vertexGroup.uvs3 != None:
-                    vertexGroup.uv3Offset = curExDataOffset
-                    curExDataOffset += 0x4 * vertexGroup.numVertex
-                else:
-                    vertexGroup.uv3Offset = 0
-                if curExDataOffset % 0x10 > 0:
-                    curExDataOffset = (curExDataOffset + 0xf) & ~0xf
+            if mesh.uvs != None and any((x.u, x.v) != (0, 4096) for x in mesh.uvs):
+                mesh.uvOffset = curExDataOffset
+                curExDataOffset += 0x8 * mesh.numVertex
+            else:
+                mesh.uvOffset = 0
+                mesh.uvs = None
+            if curExDataOffset % 0x10 > 0:
+                curExDataOffset = (curExDataOffset + 0xf) & ~0xf
+        for mesh in self.meshes:
+            if mesh.uvs2 != None and any((x.u, x.v) != (0, 4096) for x in mesh.uvs2):
+                mesh.uv2Offset = curExDataOffset
+                curExDataOffset += 0x8 * mesh.numVertex
+            else:
+                mesh.uv2Offset = 0
+                mesh.uvs2 = None
+            if curExDataOffset % 0x10 > 0:
+                curExDataOffset = (curExDataOffset + 0xf) & ~0xf
+        for mesh in self.meshes:
+            if mesh.uvs3 != None and any((x.u, x.v) != (0, 4096) for x in mesh.uvs3):
+                mesh.uv3Offset = curExDataOffset
+                curExDataOffset += 0x8 * mesh.numVertex
+            else:
+                mesh.uv3Offset = 0
+                mesh.uvs3 = None
+            if curExDataOffset % 0x10 > 0:
+                curExDataOffset = (curExDataOffset + 0xf) & ~0xf
+        for mesh in self.meshes:
+            if mesh.weights != None:
+                mesh.weightOffset = curExDataOffset
+                curExDataOffset += 0x8 * mesh.numVertex
+            else:
+                mesh.weightOffset = 0
+            if curExDataOffset % 0x10 > 0:
+                curExDataOffset = (curExDataOffset + 0xf) & ~0xf
                 
         for mesh in self.meshes:
-            for vertexGroup in mesh.vertexGroups:
-                vertexGroup.writeToFile(file)
+            mesh.writeToFile(file)
+            returnPos = file.tell()
         
-        for mesh in self.meshes:
-            for vertexGroup in mesh.vertexGroups:
-                file.seek(vertexGroup.vertexOffset)
-                for vert in vertexGroup.vertices:
-                    vert.writeToFile(file)
-        for mesh in self.meshes:
-            for vertexGroup in mesh.vertexGroups:
-                file.seek(vertexGroup.normalOffset)
-                for normal in vertexGroup.normals:
-                    normal.writeToFile(file)
-        for mesh in self.meshes:
-            for vertexGroup in mesh.vertexGroups:
-                file.seek(vertexGroup.uvOffset)
-                if vertexGroup.uvs != None:
-                    for uv in vertexGroup.uvs:
-                        uv.writeToFile(file)
-            for vertexGroup in mesh.vertexGroups:
-                file.seek(vertexGroup.uv2Offset)
-                if vertexGroup.uvs2 != None:
-                    for uv in vertexGroup.uvs2:
-                        uv.writeToFile(file)
-            for vertexGroup in mesh.vertexGroups:
-                file.seek(vertexGroup.uv3Offset)
-                if vertexGroup.uvs3 != None:
-                    for uv in vertexGroup.uvs3:
-                        uv.writeToFile(file)
+            file.seek(mesh.vertexOffset)
+            for vert in mesh.vertices:
+                vert.writeToFile(file)
+            file.seek(mesh.normalOffset)
+            for normal in mesh.normals:
+                normal.writeToFile(file)
+            file.seek(mesh.uvOffset)
+            if mesh.uvs != None:
+                for uv in mesh.uvs:
+                    uv.writeToFile(file)
+            file.seek(mesh.uv2Offset)
+            if mesh.uvs2 != None:
+                for uv in mesh.uvs2:
+                    uv.writeToFile(file)
+            file.seek(mesh.uv3Offset)
+            if mesh.uvs3 != None:
+                for uv in mesh.uvs3:
+                    uv.writeToFile(file)
+            file.seek(mesh.weightOffset)
+            if mesh.weights != None:
+                for weight in mesh.weights:
+                    weight.writeToFile(file)
+            
+            file.seek(returnPos)
 
 
 class EVMHeader:
@@ -176,16 +189,17 @@ class EVMHeader:
         self.maxPos.fromFile(file)
         self.strcode, self.pad, self.flag, self.numMeshes, \
         self.meshOffset = struct.unpack("<IIIiI", file.read(0x14))
-        self.pad2 = list(struct.unpack("<3I", file.read(0xC)))
+        readPad(self.pad2, file)
         
         return self
     
     def writeToFile(self, file: BufferedWriter):
-        # TODO
         file.write(struct.pack("<II", self.numUnknown, self.numBones))
         self.minPos.writeToFile(file)
         self.maxPos.writeToFile(file)
-        self.pos.writeToFile(file)
+        file.write(struct.pack("<IIIiI", self.strcode, self.pad, self.flag, self.numMeshes, \
+        self.meshOffset))
+        writePad(self.pad2, file)
 
 
 class EVMBone:
@@ -217,8 +231,11 @@ class EVMBone:
         return self
     
     def writeToFile(self, file: BufferedWriter):
-        # TODO
-        pass
+        file.write(struct.pack("<Ii", self.pad, self.parentInd))
+        self.relativePos.writeToFile(file)
+        self.worldPos.writeToFile(file)
+        self.minPos.writeToFile(file)
+        self.maxPos.writeToFile(file)
 
 
 class EVMVector3:
@@ -305,7 +322,7 @@ class EVMMesh:
         self.pad4 = 0
         self.numVertex = 0
         self.numSkin = 0
-        self.skinningTable = [0] * 8
+        self.skinningTable = [255] * 8
         self.vertexOffset = 0
         self.pad5 = 0
         self.normalOffset = 0
@@ -335,7 +352,7 @@ class EVMMesh:
         self.uvOffset, self.pad7, self.uv2Offset, self.pad8, \
         self.uv3Offset, self.pad9, self.weightOffset \
         = struct.unpack("<11I", file.read(0x2C))
-        self.pad10 = list(struct.unpack("<5I", file.read(0x14)))
+        readPad(self.pad10, file)
         
         curPos = file.tell()
         
@@ -397,9 +414,10 @@ class EVMMesh:
         self.numVertex, self.numSkin))
         for boneIndex in self.skinningTable:
             file.write(struct.pack("<B", boneIndex))
-        file.write(struct.pack("<16I", self.vertexOffset, self.pad5, self.normalOffset, self.pad6, \
+        file.write(struct.pack("<11I", self.vertexOffset, self.pad5, self.normalOffset, self.pad6, \
         self.uvOffset, self.pad7, self.uv2Offset, self.pad8, \
-        self.uv3Offset, self.pad9, self.weightOffset, 0, 0, 0, 0, 0))
+        self.uv3Offset, self.pad9, self.weightOffset))
+        writePad(self.pad10, file)
         return
 
 
@@ -451,7 +469,7 @@ class EVMNormal:
     
     def writeToFile(self, file: BufferedWriter):
         
-        file.write(struct.pack("<hhhh", self.x, self.y, self.z, self.flags))
+        file.write(struct.pack("<hhhh", self.x, self.y, self.z, self.pad))
 
 class EVMUv:
     u: int
@@ -474,9 +492,16 @@ class EVMWeights:
     weights: List[int] # read 4, handle up to numWeights
     indices: List[int] # read 4, handle up to numWeights
     
-    def __init__(self):
-        self.weights = [0] * 4
-        self.indices = [0] * 4
+    def __init__(self, weights=None, indices=None):
+        if weights is None:
+            weights = []
+        if indices is None:
+            indices = []
+        self.weights = weights
+        self.indices = indices
+        while len(self.weights) < 4:
+            self.weights.append(0)
+            self.indices.append(0)
     
     def fromFile(self, file: BufferedReader):
         weights = list(struct.unpack("<8B", file.read(8)))
