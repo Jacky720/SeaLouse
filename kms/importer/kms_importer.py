@@ -283,7 +283,10 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
             specular_image.hide = True
             specular_image.name = "g_SpecularMap"
             specular_image.label = "g_SpecularMap"
-            links.new(specular_image.outputs['Alpha'], principled.inputs['Specular'])
+            if 'Specular' in principled.inputs:
+                links.new(specular_image.outputs['Alpha'], principled.inputs['Specular'])
+            else:
+                links.new(specular_image.outputs['Alpha'], principled.inputs['Specular IOR Level'])
         elif vertexGroup.specularMap > 0:
             material["specularMapFallback"] = vertexGroup.specularMap
             principled.inputs['Specular'].default_value = 0.0
