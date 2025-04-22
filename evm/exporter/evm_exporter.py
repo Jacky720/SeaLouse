@@ -129,8 +129,8 @@ def main(evm_file: str, collection_name: str):
         superSkinningTable = set()
         for i, mesh in enumerate(evm.meshes):
             # Take care of the "single-weight" flag
-            if mesh.flag == 760 and mesh.skinningTable.count(255) < 7:
-                mesh.flag = 72
+            #if mesh.flag == 760 and mesh.skinningTable.count(255) < 7:
+            #    mesh.flag = 72
             
             if len(superSkinningTable.union([x for x in mesh.skinningTable if x != 0xff])) <= 8:
                 superSkinningTable = superSkinningTable.union([x for x in mesh.skinningTable if x != 0xff])
@@ -150,13 +150,13 @@ def main(evm_file: str, collection_name: str):
                 
         
         allVertsWritten: List[List[int]] = [[] for _ in range(len(evm.meshes))]
-        allSkinningTables: List[List[int]] = [[] for _ in range(len(evm.meshes))]
+        #allSkinningTables: List[List[int]] = [[] for _ in range(len(evm.meshes))]
         flip = False
         for polygon in obj.data.polygons:
             polyMat = polygon.material_index
             vertexGroup = evm.meshes[polyMat]
             vertsWritten = allVertsWritten[polyMat]
-            someSkinningTables = allSkinningTables[polyMat]
+            #someSkinningTables = allSkinningTables[polyMat]
             loopIndices = list(range(polygon.loop_start, polygon.loop_start + 3))
             loopIndices = [loopIndices[0], loopIndices[2], loopIndices[1]]
             vertexIndices = [obj.data.loops[i].vertex_index for i in loopIndices]
@@ -171,7 +171,7 @@ def main(evm_file: str, collection_name: str):
                vertexIndices[0] == vertsWritten[-2]:
                 # Optimize, baby!
                 vertsWritten += [vertexIndices[compress_add_index]]
-                someSkinningTables += [vertexGroup.skinningTable]
+                #someSkinningTables += [vertexGroup.skinningTable]
                 vert3 = obj.data.vertices[vertexIndices[compress_add_index]]
                 vertexGroup.vertices += [EVMVertex(round(vert3.co.x), round(vert3.co.y), round(vert3.co.z), \
                                                    True)]
@@ -191,7 +191,7 @@ def main(evm_file: str, collection_name: str):
             else:
                 # add all three :(
                 vertsWritten += vertexIndices
-                someSkinningTables += [vertexGroup.skinningTable] * 3
+                #someSkinningTables += [vertexGroup.skinningTable] * 3
                 vert1 = obj.data.vertices[vertexIndices[0]]
                 vert2 = obj.data.vertices[vertexIndices[1]]
                 vert3 = obj.data.vertices[vertexIndices[2]]
@@ -241,7 +241,7 @@ def main(evm_file: str, collection_name: str):
                 flip = False
         
         obj['kmsVertSideChannel'] = sum(allVertsWritten, []) # flatten
-        obj['evmSkinSideChannel'] = sum(allSkinningTables, [])
+        #obj['evmSkinSideChannel'] = sum(allSkinningTables, [])
     
     with open(evm_file, "wb") as f:
         evm.writeToFile(f)

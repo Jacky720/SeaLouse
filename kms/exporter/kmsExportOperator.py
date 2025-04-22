@@ -12,6 +12,7 @@ class ExportMgsKms(bpy.types.Operator, ExportHelper):
     filter_glob: bpy.props.StringProperty(default="*.kms", options={'HIDDEN'})
 
     make_cmdl: bpy.props.BoolProperty(name="Generate .cmdl in _win directory", default=True)
+    big_cmdl: bpy.props.BoolProperty(name="Split .cmdl to fix UV maps", default=False)
 
     def execute(self, context):
         from . import kms_exporter
@@ -30,6 +31,6 @@ class ExportMgsKms(bpy.types.Operator, ExportHelper):
                 cmdl_basename = split_path[1].replace(".kms", ".cmdl")
                 cmdl_path = os.path.join(split_path[0], "_win", cmdl_basename)
                 print("Saving", cmdl_path)
-                cmdl_exporter.main(cmdl_path, colName)
+                cmdl_exporter.main(cmdl_path, colName, False, self.big_cmdl)
                 print('CMDL COMPLETE :)')
         return {'FINISHED'}

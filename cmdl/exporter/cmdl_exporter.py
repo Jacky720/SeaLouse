@@ -3,6 +3,20 @@ from ..cmdl import *
 import os
 from mathutils import Vector
 
+def getLoops(mesh, bigMode: bool):
+    if not bigMode:
+        return sorted(mesh.data.loops, key=lambda loop: loop.vertex_index)
+    return sum([[mesh.data.loops[y] for y in x.loop_indices] for x in mesh.data.polygons], [])
+
+def getVertices(mesh, bigMode: bool):
+    if not bigMode:
+        return mesh.data.vertices
+    # Seems Blender fucks up the normals whenever I split a mesh apart
+    # But it fucks up the UVs when I keep it together
+    # Solution: Keep it together, but split the UVs *only in export*
+    # Probably skyrockets RAM usage
+    return [mesh.data.vertices[x.vertex_index] for x in getLoops(mesh, True)]
+
 def getVertWeight(vert) -> float:
     if vert.groups[0].group == 0: # weight is correct
         return vert.groups[0].weight
@@ -15,7 +29,11 @@ def boneIndexFromVertGroup(vertexGroup, obj) -> int:
     boneName = obj.vertex_groups[vertexGroup.group].name
     return int(boneName.split("bone")[1])
 
-def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
+def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: bool = False):
+
+    if evmMode:
+        bigMode = True # temporary until compressed mode set up for EVM bone skinning
+
     cmdl = CMDL()
     
     collection = bpy.data.collections[collection_name]
@@ -29,7 +47,7 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
     nrmSection = CMDLSection(b"NRM0")
 
     for mesh in meshes:
-        for vertex in mesh.data.vertices:
+        for vertex in getVertices(mesh, bigMode):
             if evmMode:
                 posSection.data.data.append((vertex.co.x/16, vertex.co.y/16, vertex.co.z/16, 1.0))
             else:
@@ -50,10 +68,23 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
         uv_sections.append(CMDLSection(b"TEX2"))
         
     for mesh in meshes:
+        """
+        prevMat = -1
+        skinningTables = [-1] * len(mesh.material_slots)
+        kmsOidxLookup = list(mesh["kmsVertSideChannel"])
+        evmSkinLookup = list(mesh["evmSkinSideChannel"])
+        for poly in mesh.data.polygons:
+            if poly.material_index != prevMat:
+                vertex = poly.vertices[0]
+                skinningTables[poly.material_index] = list(evmSkinLookup[kmsOidxLookup.index(vertex)])
+                prevMat = poly.material_index
+        for x in skinningTables:
+            print(x)
+        """
         prevVertexIndex = -1
         # UVs are attached to loops, not vertices, making this part more complex
-        for loop in sorted(mesh.data.loops, key=lambda loop: loop.vertex_index):
-            if loop.vertex_index == prevVertexIndex:
+        for loop in getLoops(mesh, bigMode):
+            if loop.vertex_index == prevVertexIndex and not bigMode:
                 continue
             prevVertexIndex = loop.vertex_index
             for i in range(3):
@@ -72,12 +103,23 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
         vertIndexOffset = 0
         for mesh in meshes:
             kmsOidxLookup = list(mesh["kmsVertSideChannel"])
-            evmSkinLookup = list(mesh["evmSkinSideChannel"])
-            for i, vertex in enumerate(mesh.data.vertices):
-                skinningTable = list(evmSkinLookup[kmsOidxLookup.index(i) + vertIndexOffset])
-                boneIndices = [skinningTable.index(boneIndexFromVertGroup(x, mesh)) for x in vertex.groups]
-                #boneIndices = [boneIndexFromVertGroup(x, mesh) for x in vertex.groups]
-                boneWeights = [x.weight for x in vertex.groups]
+            # TODO: make this work with multiple meshes (heck, test if the rest of it works with multiple meshes)
+            skinningTables = [[] for _ in range(len(mesh.material_slots))]
+            prevVertexIndex = -1
+            for poly in mesh.data.polygons:
+              for vertexIndex in poly.vertices: # TODO: yeah this almost certainly will break outside of bigMode, temporary override at top
+                vertex = mesh.data.vertices[vertexIndex]
+                skinningTable = skinningTables[poly.material_index]
+                boneIndices = []
+                boneWeights = []
+                for group in vertex.groups:
+                    boneIndex = boneIndexFromVertGroup(group, mesh)
+                    if boneIndex in skinningTable:
+                        boneIndices.append(skinningTable.index(boneIndex))
+                    else:
+                        boneIndices.append(len(skinningTable))
+                        skinningTable.append(boneIndex)
+                    boneWeights.append(group.weight)
                 while len(boneWeights) < 4:
                     boneIndices.append(0)
                     boneWeights.append(0.0)
@@ -94,8 +136,8 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
     vertIndexOffset = 0
     for mesh in meshes:
         kmsOidxLookup = list(mesh["kmsVertSideChannel"])
-        for i in range(len(mesh.data.vertices)):
-            oidxSection.data.data.append(kmsOidxLookup.index(i) + vertIndexOffset)
+        for vertex in getVertices(mesh, bigMode):
+            oidxSection.data.data.append(kmsOidxLookup.index(vertex.index) + vertIndexOffset)
         vertIndexOffset += len(mesh.data.vertices)
     
     cmdl.sections.append(oidxSection)
@@ -121,12 +163,14 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
                 minFaces[storeIndex] = j
             maxFaces[storeIndex] = j
             # Faces
-            loops = [mesh.data.loops[k] for k in range(polygon.loop_start, polygon.loop_start + 3)]
-            newFace = [loop.vertex_index + vertIndexOffset for loop in loops]
+            loops = [mesh.data.loops[k] for k in polygon.loop_indices]
+            if bigMode:
+                newFace = list(range(j * 3 + vertIndexOffset, j * 3 + vertIndexOffset + 3))
+            else:
+                newFace = [loop.vertex_index + vertIndexOffset for loop in loops]
             cmdl.tail.faces.append(newFace)
             # Mesh vertex limits
-            for loop in loops:
-                vertexIndex = loop.vertex_index
+            for vertexIndex in newFace:
                 if minVerts[storeIndex] == -1 or vertexIndex < minVerts[storeIndex]:
                     minVerts[storeIndex] = vertexIndex
                 if vertexIndex > maxVerts[storeIndex]:
@@ -135,7 +179,7 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
         for j, cmdlMesh in enumerate(newMeshes):
             cmdlMesh.meshIndex = i
             cmdlMesh.subMeshIndex = j
-            cmdlMesh.startVertex = minVerts[j] + vertIndexOffset
+            cmdlMesh.startVertex = minVerts[j]
             cmdlMesh.vertexCount = maxVerts[j] - minVerts[j] + 1
             cmdlMesh.startFace = (minFaces[j]) * 3 + faceIndexOffset
             cmdlMesh.faceCount = (maxFaces[j] - minFaces[j] + 1) * 3
@@ -152,17 +196,22 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False):
                 cmdlMesh.maxPos.x /= 16
                 cmdlMesh.maxPos.y /= 16
                 cmdlMesh.maxPos.z /= 16
-                skinningTable = list(evmSkinLookup[kmsOidxLookup.index(cmdlMesh.startVertex)])
+                if bigMode:
+                    startVertex = getVertices(mesh, bigMode)[cmdlMesh.startVertex].index
+                else:
+                    startVertex = cmdlMesh.startVertex
+                skinningTable = skinningTables[j]
                 for bone in skinningTable:
                     if bone == 0xff:
                         break
                     cmdlMesh.bones.append(bone)
                 cmdlMesh.boneCount = len(cmdlMesh.bones)
+                print("Skinning cmdlMesh to bones:", cmdlMesh.bones)
             #for k in range(cmdlMesh.startVertex, cmdlMesh.startVertex + cmdlMesh.vertexCount):
 
             #print(cmdlMesh.startFace, cmdlMesh.faceCount)
         
-        vertIndexOffset += len(mesh.data.vertices)
+        vertIndexOffset += len(getVertices(mesh, bigMode))
         faceIndexOffset += len(mesh.data.polygons) * 3
         
         cmdl.tail.meshes += newMeshes
