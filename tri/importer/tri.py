@@ -486,10 +486,10 @@ def paintPixels(clut: List[int], pixels: List[int], width: int, height: int) -> 
             pixelPos = x + y * width
             pixel = pixels[pixelPos // 4][pixelPos % 4]
             clutPix = clut[pixel]
-            #print(clutPix[2], clutPix[1], clutPix[0], ((clutPix[3] * 255) // 80))
+            #print(clutPix[2], clutPix[1], clutPix[0], ((clutPix[3] * 255) // 0x80))
             texture += struct.pack("BBBB", \
-            #clutPix[2], clutPix[1], clutPix[0], ((clutPix[3] * 255) // 80))
-            clutPix[2], clutPix[1], clutPix[0], clutPix[3])
+            clutPix[2], clutPix[1], clutPix[0], ((clutPix[3] * 255) // 0x80))
+            #clutPix[2], clutPix[1], clutPix[0], clutPix[3])
     return texture
 
 
