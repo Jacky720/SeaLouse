@@ -57,7 +57,7 @@ kmsBoneNameArray = [
     "lower_arm_L",
     "hand_L",
     "neck", # bone11
-    "head",
+    "head_dummy",
     "upper_leg_R", # bone13
     "lower_leg_R",
     "foot_R",
@@ -65,7 +65,39 @@ kmsBoneNameArray = [
     "upper_leg_L", # bone17
     "lower_leg_L",
     "foot_L",
-    "toe_L"
+    "toe_L",
+    "head", # bone21 - duplicate of bone12, gets all the weights on EVM
+    "lower_lip_side_L", # bone22
+    "lower_lip_side_R",
+    "lower_lip_corner_L",
+    "lower_lip_corner_R",
+    "eye_L", # bone26
+    "eye_R",
+    "eyebrow_upper_L", # bone28
+    "eyebrow_L",
+    "eyebrow_lower_L",
+    "eyebrow_upper_R",
+    "eyebrow_R",
+    "eyebrow_lower_R",
+    "upper_lip_side_L", # bone34
+    "upper_lip_side_R",
+    "upper_lip_corner_L",
+    "upper_lip_corner_R",
+    "outer_cheek_L", # bone38
+    "outer_cheek_R",
+    "nostril_L", # bone40
+    "nostril_R",
+    "jaw", # bone42
+    "inner_cheek_L", # bone43
+    "inner_cheek_R",
+    "lower_eyelid_1_L", # bit of a cheat, this should be just lower eyelid
+    "lower_eyelid_1_R",
+    "lower_eyelid_2_L", # really corner eyelid
+    "upper_eyelid_2_L",
+    "upper_eyelid_1_L",
+    "lower_eyelid_2_R", # really corner eyelid
+    "upper_eyelid_2_R",
+    "upper_eyelid_1_R" # bone52
 ]
 
 class MgrToMgsBones(bpy.types.Operator):
