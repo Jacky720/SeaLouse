@@ -8,6 +8,9 @@ import bmesh
 
 DEFAULT_BONE_LENGTH = 10
 
+def vertCoordCheck(vert1: EVMVertex, vert2: EVMVertex):
+    return vert1.x == vert2.x and vert1.y == vert2.y and vert1.z == vert2.z
+
 # Credit WoefulWolf/Nier2Blender2Nier
 def reset_blend():
     #bpy.ops.object.mode_set(mode='OBJECT')
@@ -69,8 +72,17 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
             uvs3 += [(uv.u / 4096, 1 - uv.v / 4096) for uv in vertexGroup.uvs3]
         else:
             uvs3 += [(0, 1) for _ in range(vertexGroup.numVertex)]
-        flip = False
-        for j in range(vertexGroup.numVertex):
+        
+        # This is ridiculous. The data is duplicated! How can the processor...
+        if i == 0:
+            flip = False
+        elif (vertCoordCheck(evm.meshes[i - 1].vertices[-2], vertexGroup.vertices[0]) and
+              vertCoordCheck(evm.meshes[i - 1].vertices[-1], vertexGroup.vertices[1])):
+            pass # Retain previous flip
+        else:
+            flip = False
+        
+        for j in range(2, vertexGroup.numVertex):
             if vertexGroup.vertices[j].isFace:
                 if flip:
                     faces.append((j - 2 + faceIndexOffset, j - 1 + faceIndexOffset, j + faceIndexOffset))

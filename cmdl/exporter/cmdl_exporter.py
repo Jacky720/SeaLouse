@@ -113,6 +113,8 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
                 boneIndices = []
                 boneWeights = []
                 for group in vertex.groups:
+                    if group.weight == 0:
+                        continue
                     boneIndex = boneIndexFromVertGroup(group, mesh)
                     if boneIndex in skinningTable:
                         boneIndices.append(skinningTable.index(boneIndex))
@@ -120,12 +122,17 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
                         boneIndices.append(len(skinningTable))
                         skinningTable.append(boneIndex)
                     boneWeights.append(group.weight)
+                
+                weightTotal = sum(boneWeights) # NORMALIZE KILLING PEOPLE
+                for i, weight in enumerate(boneWeights):
+                    boneWeights[i] = weight * (1.0 / weightTotal)
+                
                 while len(boneWeights) < 4:
                     boneIndices.append(0)
                     boneWeights.append(0.0)
                 boniSection.data.data.append(boneIndices)
                 bonwSection.data.data.append(boneWeights)
-            vertIndexOffset += len(mesh.data.vertices)
+            vertIndexOffset += len(getVertices(mesh, bigMode))
         
         cmdl.sections.append(boniSection)
         cmdl.sections.append(bonwSection)
@@ -138,7 +145,7 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
         kmsOidxLookup = list(mesh["kmsVertSideChannel"])
         for vertex in getVertices(mesh, bigMode):
             oidxSection.data.data.append(kmsOidxLookup.index(vertex.index) + vertIndexOffset)
-        vertIndexOffset += len(mesh.data.vertices)
+        vertIndexOffset += len(getVertices(mesh, bigMode))
     
     cmdl.sections.append(oidxSection)
     
@@ -149,6 +156,7 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
     
     for i, mesh in enumerate(meshes):
         kmsOidxLookup = list(mesh["kmsVertSideChannel"])
+        vertices = getVertices(mesh, bigMode)
         
         cmdl.tail.numMeshes += len(mesh.material_slots)
         newMeshes = [CMDLMesh() for _ in range(len(mesh.material_slots))]
@@ -179,6 +187,10 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
         for j, cmdlMesh in enumerate(newMeshes):
             cmdlMesh.meshIndex = i
             cmdlMesh.subMeshIndex = j
+            assert(0 <= minVerts[j] < len(vertices))
+            assert(0 <= maxVerts[j] < len(vertices))
+            assert(0 <= minFaces[j] < len(vertices))
+            assert(0 <= maxFaces[j] < len(vertices))
             cmdlMesh.startVertex = minVerts[j]
             cmdlMesh.vertexCount = maxVerts[j] - minVerts[j] + 1
             cmdlMesh.startFace = (minFaces[j]) * 3 + faceIndexOffset
@@ -197,7 +209,7 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
                 cmdlMesh.maxPos.y /= 16
                 cmdlMesh.maxPos.z /= 16
                 if bigMode:
-                    startVertex = getVertices(mesh, bigMode)[cmdlMesh.startVertex].index
+                    startVertex = vertices[cmdlMesh.startVertex].index
                 else:
                     startVertex = cmdlMesh.startVertex
                 skinningTable = skinningTables[j]
@@ -211,7 +223,7 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
 
             #print(cmdlMesh.startFace, cmdlMesh.faceCount)
         
-        vertIndexOffset += len(getVertices(mesh, bigMode))
+        vertIndexOffset += len(vertices)
         faceIndexOffset += len(mesh.data.polygons) * 3
         
         cmdl.tail.meshes += newMeshes
