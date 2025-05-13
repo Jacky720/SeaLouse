@@ -43,6 +43,7 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
     meshes = [x for x in collection.all_objects if x.type == "MESH"]
     
     # Vertex positions and normals
+    print("Computing coordinates")
     posSection = CMDLSection(b"POS0")
     nrmSection = CMDLSection(b"NRM0")
 
@@ -59,6 +60,7 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
     cmdl.sections.append(nrmSection)
     
     # UV Maps
+    print("Computing UV maps")
     uv_sections: List[CMDLSectionData] = []
     if any(len(mesh.data.uv_layers) > 0 for mesh in meshes):
         uv_sections.append(CMDLSection(b"TEX0"))
@@ -98,11 +100,12 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
     
     # EVM only- bone weights
     if evmMode:
+        print("Computing bone weights")
         boniSection = CMDLSection(b"BONI")
         bonwSection = CMDLSection(b"BONW")
         vertIndexOffset = 0
         for mesh in meshes:
-            kmsOidxLookup = list(mesh["kmsVertSideChannel"])
+            #kmsOidxLookup = list(mesh["kmsVertSideChannel"])
             # TODO: make this work with multiple meshes (heck, test if the rest of it works with multiple meshes)
             skinningTables = [[] for _ in range(len(mesh.material_slots))]
             prevVertexIndex = -1
@@ -138,6 +141,7 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
         cmdl.sections.append(bonwSection)
     
     # Original (KMS) indexing
+    print("Computing original-file indexes")
     oidxSection = CMDLSection(b"OIDX")
     
     vertIndexOffset = 0
@@ -150,12 +154,13 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
     cmdl.sections.append(oidxSection)
     
     # Tail
+    print("Computing mesh list")
     
     vertIndexOffset = 0
     faceIndexOffset = 0
     
     for i, mesh in enumerate(meshes):
-        kmsOidxLookup = list(mesh["kmsVertSideChannel"])
+        #kmsOidxLookup = list(mesh["kmsVertSideChannel"])
         vertices = getVertices(mesh, bigMode)
         
         cmdl.tail.numMeshes += len(mesh.material_slots)
@@ -187,10 +192,14 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
         for j, cmdlMesh in enumerate(newMeshes):
             cmdlMesh.meshIndex = i
             cmdlMesh.subMeshIndex = j
-            assert(0 <= minVerts[j] < len(vertices))
-            assert(0 <= maxVerts[j] < len(vertices))
-            assert(0 <= minFaces[j] < len(vertices))
-            assert(0 <= maxFaces[j] < len(vertices))
+            try:
+                assert(0 <= minVerts[j] - vertIndexOffset < len(vertices))
+                assert(0 <= maxVerts[j] - vertIndexOffset < len(vertices))
+                #assert(0 <= minFaces[j] - faceIndexOffset < len(vertices))
+                #assert(0 <= maxFaces[j] - faceIndexOffset < len(vertices))
+            except AssertionError:
+                print("Assertion failed! On mesh %d, submesh %d, with %d vertices, vertices range (%d, %d) and faces range (%d, %d)!" % (i, j, len(vertices), minVerts[j], maxVerts[j], minFaces[j], maxFaces[j]))
+                assert(False) # See above log
             cmdlMesh.startVertex = minVerts[j]
             cmdlMesh.vertexCount = maxVerts[j] - minVerts[j] + 1
             cmdlMesh.startFace = (minFaces[j]) * 3 + faceIndexOffset

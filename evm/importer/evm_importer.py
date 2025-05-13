@@ -175,7 +175,8 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
         bm.to_mesh(objmesh)
         bm.free()
     
-    objmesh.use_auto_smooth = True
+    if bpy.app.version < (4, 1):
+        objmesh.use_auto_smooth = True
     return obj
 
 def construct_armature(evm: EVM, evmName: str):

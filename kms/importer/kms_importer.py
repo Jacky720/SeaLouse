@@ -28,6 +28,7 @@ def reset_blend():
 
 # Credit WoefulWolf/Nier2Blender2Nier
 def set_partent(parent, child):
+    # TODO: adjust child location too, without breaking export
     bpy.context.view_layer.objects.active = parent
     child.select_set(True)
     parent.select_set(True)
@@ -103,6 +104,7 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
     obj = bpy.data.objects.new(objmesh.name, objmesh)
     obj.location = Vector(meshPos)
     #obj.location = Vector((0,0,0))
+    obj['flag'] = mesh.flag
     kmsCollection.objects.link(obj)
     objmesh.from_pydata(vertices, [], faces)
     objmesh.normals_split_custom_set_from_vertices(normals)
@@ -150,7 +152,8 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
         bm.to_mesh(objmesh)
         bm.free()
     
-    objmesh.use_auto_smooth = True
+    if bpy.app.version < (4, 1):
+        objmesh.use_auto_smooth = True
     return obj
 
 def construct_armature(kms: KMS, kmsName: str):
@@ -164,6 +167,7 @@ def construct_armature(kms: KMS, kmsName: str):
     ob["bboxMax"] = [kms.header.maxPos.x, kms.header.maxPos.y, kms.header.maxPos.z]
     ob["kmsType"] = kms.header.kmsType
     ob["strcode"] = kms.header.strcode
+    ob.location = (kms.header.pos.x, kms.header.pos.y, kms.header.pos.z)
     
     bpy.context.view_layer.objects.active = ob
     bpy.ops.object.mode_set(mode='EDIT')

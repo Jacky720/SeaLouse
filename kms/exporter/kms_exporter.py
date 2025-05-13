@@ -24,6 +24,7 @@ def main(kms_file: str, collection_name: str):
     kms.header.strcode = amt["strcode"]
     kms.header.minPos = KMSVector3(amt["bboxMin"][0], amt["bboxMin"][1], amt["bboxMin"][2])
     kms.header.maxPos = KMSVector3(amt["bboxMax"][0], amt["bboxMax"][1], amt["bboxMax"][2])
+    kms.header.pos = KMSVector3(amt.location.x, amt.location.y, amt.location.z)
     
     bones = amt.data.bones
     
@@ -35,7 +36,7 @@ def main(kms_file: str, collection_name: str):
         #kms.header.numMesh += 1
         #kms.header.numBones += 1
         kmsMesh = KMSMesh()
-        kmsMesh.flag = 1
+        kmsMesh.flag = obj['flag'] if 'flag' in obj else 1
 
         kmsMesh.pos.x = obj.location.x
         kmsMesh.pos.y = obj.location.y
