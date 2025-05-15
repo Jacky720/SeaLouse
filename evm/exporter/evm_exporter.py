@@ -131,6 +131,8 @@ def main(evm_file: str, collection_name: str):
                 for bone in vert.groups:
                     boneIndex = boneIndexFromVertGroup(bone, obj)
                     if boneIndex not in mesh.skinningTable:
+                        if mesh.numSkin == 8:
+                            raise Exception("Material %d (%s) has too many weights" % (polyMat, obj.material_slots[polyMat].name))
                         mesh.skinningTable[mesh.numSkin] = boneIndex # If this errors, you have too many bones on one material
                         mesh.numSkin += 1
         

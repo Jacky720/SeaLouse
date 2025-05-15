@@ -198,8 +198,8 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
                 #assert(0 <= minFaces[j] - faceIndexOffset < len(vertices))
                 #assert(0 <= maxFaces[j] - faceIndexOffset < len(vertices))
             except AssertionError:
-                print("Assertion failed! On mesh %d, submesh %d, with %d vertices, vertices range (%d, %d) and faces range (%d, %d)!" % (i, j, len(vertices), minVerts[j], maxVerts[j], minFaces[j], maxFaces[j]))
-                assert(False) # See above log
+                raise Exception("Assertion failed! On mesh %d, submesh %d, with %d vertices, vertices range (%d, %d) and faces range (%d, %d)!" % (i, j, len(vertices), minVerts[j], maxVerts[j], minFaces[j], maxFaces[j]))
+                #assert(False) # See above log
             cmdlMesh.startVertex = minVerts[j]
             cmdlMesh.vertexCount = maxVerts[j] - minVerts[j] + 1
             cmdlMesh.startFace = (minFaces[j]) * 3 + faceIndexOffset
