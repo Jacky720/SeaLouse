@@ -98,7 +98,7 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
             vert = (vert[0], vert[1], mesh.maxPos.z)
         vertices[i] = vert
     
-    #print("\n".join([str(x) for x in normals]))
+    #print("\n".join([str(x[0]) for x in normals[:10]]) + "\n")
     
     objmesh = bpy.data.meshes.new("kmsMesh%d" % meshInd)
     obj = bpy.data.objects.new(objmesh.name, objmesh)
@@ -106,10 +106,17 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
     #obj.location = Vector((0,0,0))
     obj['flag'] = mesh.flag
     kmsCollection.objects.link(obj)
-    objmesh.from_pydata(vertices, [], faces)
+    objmesh.from_pydata(vertices, [], faces, False)
+    if bpy.app.version < (4, 1):
+        objmesh.use_auto_smooth = True
+    #print("\n".join([str(x.normal) for x in objmesh.loops[:10]]) + "\n")
     objmesh.normals_split_custom_set_from_vertices(normals)
+    if bpy.app.version < (4, 1):
+        objmesh.calc_normals_split()
     objmesh.update(calc_edges=True)
-    #print("\n".join([str(x.normal) for x in objmesh.vertices]))
+    #for poly in objmesh.polygons:
+    #    poly.use_smooth = True
+    #print("\n".join([str(x.vertex_index) + " " + str(x.normal.x) for x in objmesh.loops[:10]]))
     
     # Bone weights
     obj.vertex_groups.new(name="bone%d" % meshInd)
@@ -152,8 +159,6 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
         bm.to_mesh(objmesh)
         bm.free()
     
-    if bpy.app.version < (4, 1):
-        objmesh.use_auto_smooth = True
     return obj
 
 def construct_armature(kms: KMS, kmsName: str):

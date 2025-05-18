@@ -118,10 +118,17 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
     obj.location = Vector((0,0,0))
     obj.scale = Vector((1/16,1/16,1/16))
     evmCollection.objects.link(obj)
-    objmesh.from_pydata(vertices, [], faces)
+    objmesh.from_pydata(vertices, [], faces, False)
+    if bpy.app.version < (4, 1):
+        objmesh.use_auto_smooth = True
+    #print("\n".join([str(x.normal) for x in objmesh.loops[:10]]) + "\n")
     objmesh.normals_split_custom_set_from_vertices(normals)
+    if bpy.app.version < (4, 1):
+        objmesh.calc_normals_split()
     objmesh.update(calc_edges=True)
-    #print("\n".join([str(x.normal) for x in objmesh.vertices]))
+    #for poly in objmesh.polygons:
+    #    poly.use_smooth = True
+    #print("\n".join([str(x.vertex_index) + " " + str(x.normal.x) for x in objmesh.loops[:10]]))
     
     # Bone weights
     i = 0
@@ -175,8 +182,6 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
         bm.to_mesh(objmesh)
         bm.free()
     
-    if bpy.app.version < (4, 1):
-        objmesh.use_auto_smooth = True
     return obj
 
 def construct_armature(evm: EVM, evmName: str):

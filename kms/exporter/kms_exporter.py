@@ -3,16 +3,22 @@ from ..kms import *
 import os
 from mathutils import Vector
 
-def kmsUvFromLayerAndLoop(obj, uvLayer: int, loopIndex: int) -> KMSUv:
-    uv = obj.data.uv_layers[uvLayer].uv[loopIndex].vector
-    return KMSUv(uv.x * 4096, (1 - uv.y) * 4096)
-
 def getVertWeight(vert) -> int:
     if vert.groups[0].group == 0: # weight is correct
         return int(vert.groups[0].weight * 4096)
     if len(vert.groups) == 2: # weights are in wrong order (may be impossible, handle anyway)
         return int(vert.groups[1].weight * 4096)
     return 0 # vertex is only weighted to parent
+
+def kmsVertFromVert(vert) -> KMSVertex:
+    return KMSVertex(round(vert.co.x), round(vert.co.y), round(vert.co.z), getVertWeight(vert))
+
+def kmsNormFromLoop(loop, isFace: bool) -> KMSNormal:
+    return KMSNormal(loop.normal.x * -4096, loop.normal.y * -4096, loop.normal.z * -4096, isFace)
+
+def kmsUvFromLayerAndLoop(mesh, uvLayer: int, loopIndex: int) -> KMSUv:
+    uv = mesh.uv_layers[uvLayer].uv[loopIndex].vector
+    return KMSUv(uv.x * 4096, (1 - uv.y) * 4096)
 
 def main(kms_file: str, collection_name: str):
     kms = KMS()
@@ -32,9 +38,13 @@ def main(kms_file: str, collection_name: str):
         if obj.type != "MESH":
             continue
         print("Exporting", obj.name)
-        # For now, let's assume direct re-export (so meshes and bones are still tightly linked, not suitable for distribution)
+        # For now, let's assume direct re-export (so meshes and bones are still tightly linked)
         #kms.header.numMesh += 1
         #kms.header.numBones += 1
+        mesh = obj.data
+        if bpy.app.version < (4, 1):
+            mesh.calc_normals_split()
+        
         kmsMesh = KMSMesh()
         kmsMesh.flag = obj['flag'] if 'flag' in obj else 1
 
@@ -60,7 +70,7 @@ def main(kms_file: str, collection_name: str):
             kmsMesh.pos.y -= curMesh.pos.y
             kmsMesh.pos.z -= curMesh.pos.z
             curMesh = curMesh.parent
-            
+        
         
         # Create vertex groups from materials
         for materialSlot in obj.material_slots:
@@ -91,25 +101,25 @@ def main(kms_file: str, collection_name: str):
             elif mat.get("environmentMapFallback") is not None:
                 vertexGroup.environmentMap = mat["environmentMapFallback"]
 
-            if len(obj.data.uv_layers) > 0:
+            if len(mesh.uv_layers) > 0:
                 vertexGroup.uvs = []
-            if len(obj.data.uv_layers) > 1:
+            if len(mesh.uv_layers) > 1:
                 vertexGroup.uvs2 = []
-            if len(obj.data.uv_layers) > 2:
+            if len(mesh.uv_layers) > 2:
                 vertexGroup.uvs3 = []
                 
             kmsMesh.vertexGroups.append(vertexGroup)
         
         allVertsWritten: List[List[int]] = [[] for _ in range(len(kmsMesh.vertexGroups))]
         flip = False
-        for polygon in obj.data.polygons:
+        for polygon in mesh.polygons:
             assert(polygon.loop_total == 3) # Not triangulated!
             polyMat = polygon.material_index
             vertexGroup = kmsMesh.vertexGroups[polyMat]
             vertsWritten = allVertsWritten[polyMat]
             loopIndices = list(range(polygon.loop_start, polygon.loop_start + 3))
             loopIndices = [loopIndices[0], loopIndices[2], loopIndices[1]]
-            vertexIndices = [obj.data.loops[i].vertex_index for i in loopIndices]
+            vertexIndices = [mesh.loops[i].vertex_index for i in loopIndices]
             if flip:
                 other_check_index = 1
                 compress_add_index = 2
@@ -121,50 +131,41 @@ def main(kms_file: str, collection_name: str):
                vertexIndices[0] == vertsWritten[-2]:
                 # Optimize, baby!
                 vertsWritten += [vertexIndices[compress_add_index]]
-                vert3 = obj.data.vertices[vertexIndices[compress_add_index]]
-                vertexGroup.vertices += [KMSVertex(round(vert3.co.x), round(vert3.co.y), round(vert3.co.z), \
-                                                   getVertWeight(vert3))]
-                vertexGroup.normals += [KMSNormal(vert3.normal.x * -4096, vert3.normal.y * -4096, vert3.normal.z * -4096, True)]
-                if len(obj.data.uv_layers) > 0:
-                    vertexGroup.uvs += [kmsUvFromLayerAndLoop(obj, 0, loopIndices[compress_add_index])]
-                if len(obj.data.uv_layers) > 1:
-                    vertexGroup.uvs2 += [kmsUvFromLayerAndLoop(obj, 1, loopIndices[compress_add_index])]
-                if len(obj.data.uv_layers) > 2:
-                    vertexGroup.uvs3 += [kmsUvFromLayerAndLoop(obj, 2, loopIndices[compress_add_index])]
+                vertexGroup.vertices += [kmsVertFromVert(mesh.vertices[vertexIndices[compress_add_index]])]
+                vertexGroup.normals += [kmsNormFromLoop(mesh.loops[loopIndices[compress_add_index]], True)]
+                if len(mesh.uv_layers) > 0:
+                    vertexGroup.uvs += [kmsUvFromLayerAndLoop(mesh, 0, loopIndices[compress_add_index])]
+                if len(mesh.uv_layers) > 1:
+                    vertexGroup.uvs2 += [kmsUvFromLayerAndLoop(mesh, 1, loopIndices[compress_add_index])]
+                if len(mesh.uv_layers) > 2:
+                    vertexGroup.uvs3 += [kmsUvFromLayerAndLoop(mesh, 2, loopIndices[compress_add_index])]
                 flip = not flip
             else:
                 # add all three :(
                 vertsWritten += vertexIndices
-                vert1 = obj.data.vertices[vertexIndices[0]]
-                vert2 = obj.data.vertices[vertexIndices[1]]
-                vert3 = obj.data.vertices[vertexIndices[2]]
-                vertexGroup.vertices += [
-                    KMSVertex(round(vert1.co.x), round(vert1.co.y), round(vert1.co.z), getVertWeight(vert1)),
-                    KMSVertex(round(vert2.co.x), round(vert2.co.y), round(vert2.co.z), getVertWeight(vert2)),
-                    KMSVertex(round(vert3.co.x), round(vert3.co.y), round(vert3.co.z), getVertWeight(vert3))
-                ]
+                vertexGroup.vertices += [kmsVertFromVert(mesh.vertices[vert]) for vert in vertexIndices]
                 vertexGroup.normals += [
-                    KMSNormal(vert1.normal.x * -4096, vert1.normal.y * -4096, vert1.normal.z * -4096, False),
-                    KMSNormal(vert2.normal.x * -4096, vert2.normal.y * -4096, vert2.normal.z * -4096, False),
-                    KMSNormal(vert3.normal.x * -4096, vert3.normal.y * -4096, vert3.normal.z * -4096, True)
+                    kmsNormFromLoop(mesh.loops[loopIndices[0]], False),
+                    kmsNormFromLoop(mesh.loops[loopIndices[1]], False),
+                    kmsNormFromLoop(mesh.loops[loopIndices[2]], True)
                 ]
-                if len(obj.data.uv_layers) > 0:
+                if len(mesh.uv_layers) > 0:
                     vertexGroup.uvs += [
-                        kmsUvFromLayerAndLoop(obj, 0, loopIndices[0]),
-                        kmsUvFromLayerAndLoop(obj, 0, loopIndices[1]),
-                        kmsUvFromLayerAndLoop(obj, 0, loopIndices[2])
+                        kmsUvFromLayerAndLoop(mesh, 0, loopIndices[0]),
+                        kmsUvFromLayerAndLoop(mesh, 0, loopIndices[1]),
+                        kmsUvFromLayerAndLoop(mesh, 0, loopIndices[2])
                     ]
-                if len(obj.data.uv_layers) > 1:
+                if len(mesh.uv_layers) > 1:
                     vertexGroup.uvs2 += [
-                        kmsUvFromLayerAndLoop(obj, 1, loopIndices[0]),
-                        kmsUvFromLayerAndLoop(obj, 1, loopIndices[1]),
-                        kmsUvFromLayerAndLoop(obj, 1, loopIndices[2])
+                        kmsUvFromLayerAndLoop(mesh, 1, loopIndices[0]),
+                        kmsUvFromLayerAndLoop(mesh, 1, loopIndices[1]),
+                        kmsUvFromLayerAndLoop(mesh, 1, loopIndices[2])
                     ]
-                if len(obj.data.uv_layers) > 2:
+                if len(mesh.uv_layers) > 2:
                     vertexGroup.uvs3 += [
-                        kmsUvFromLayerAndLoop(obj, 2, loopIndices[0]),
-                        kmsUvFromLayerAndLoop(obj, 2, loopIndices[1]),
-                        kmsUvFromLayerAndLoop(obj, 2, loopIndices[2])
+                        kmsUvFromLayerAndLoop(mesh, 2, loopIndices[0]),
+                        kmsUvFromLayerAndLoop(mesh, 2, loopIndices[1]),
+                        kmsUvFromLayerAndLoop(mesh, 2, loopIndices[2])
                     ]
                 flip = False
         

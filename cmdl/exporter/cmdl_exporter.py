@@ -48,12 +48,21 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
     nrmSection = CMDLSection(b"NRM0")
 
     for mesh in meshes:
-        for vertex in getVertices(mesh, bigMode):
+        prevVertexIndex = -1
+        # Accurate normals are attached to loops
+        meshmesh = mesh.data
+        if bpy.app.version < (4, 1):
+            meshmesh.calc_normals_split()
+        for loop in getLoops(mesh, bigMode):
+            if loop.vertex_index == prevVertexIndex and not bigMode:
+                continue
+            prevVertexIndex = loop.vertex_index
+            vertex = meshmesh.vertices[loop.vertex_index]
             if evmMode:
                 posSection.data.data.append((vertex.co.x/16, vertex.co.y/16, vertex.co.z/16, 1.0))
             else:
                 posSection.data.data.append((vertex.co.x, vertex.co.y, vertex.co.z, getVertWeight(vertex)))
-            nrm = vertex.normal
+            nrm = loop.normal
             nrmSection.data.data.append((-nrm.x, -nrm.y, -nrm.z))
 
     cmdl.sections.append(posSection)

@@ -19,6 +19,11 @@ EVM:
 
 Both the KMS and EVM exporters also strictly require all geometry be triangulated and have no loose ends or unused materials. I use the Nier2Blender2Nier "Delete Loose Geometry (All)" option to ensure I've cleaned up all stray vertices and edges.
 
-Besides that... I'm not sure how well this could work for MGS3, I've heard some of the formats are similar but haven't checked yet. Some models seem to have a lower vertex limit in modification than others, be careful. The exporter may completely screw up the normals, especially if the same model is imported and exported again. If something doesn't seem to work, try exporting with no changes and then apply modifications piecemeal until you can identify the issue. An unending load screen is a sign of a corrupt CMDL, while a game crash on rendering the model is a sign of either unused materials (remember to delete materials that only applied to the original model and not the custom one) or too many vertices.
+Besides that... I think most of the CMDL code could work for MGS3, but I don't have the main MDL for that game handled at all. Some models seem to have a lower vertex limit in modification than others, be careful. The exporter may alter the normals, even if a model is re-exported with no changes. If something doesn't seem to work, try exporting with no changes and then apply modifications piecemeal until you can identify the issue.
+
+Possible bugs to watch for:
+- An unending load screen is a sign of a corrupt CMDL.
+- A game crash on rendering the model is a sign of either unused materials (remember to delete materials that only applied to the original model and not the custom one) or too many vertices.
+- Corrupted UV maps occur due to the CMDL exporter not splitting along UV seams. You should split your UV seams before export. Do not use the tantalizing "split CMDL faces" checkbox, it doesn't work, especially on KMS.
 
 Have fun!

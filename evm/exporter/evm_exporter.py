@@ -13,16 +13,22 @@ def cycleThree(x: list[any]):
 def reverseFour(x: list[any]):
     x[0], x[1], x[2], x[3] = x[3], x[2], x[1], x[0]
 
-def evmUvFromLayerAndLoop(obj, uvLayer: int, loopIndex: int) -> EVMUv:
-    uv = obj.data.uv_layers[uvLayer].uv[loopIndex].vector
-    return EVMUv(uv.x * 4096, (1 - uv.y) * 4096)
-
 def getVertWeight(vert) -> int:
     if vert.groups[0].group == 0: # weight is correct
         return int(vert.groups[0].weight * 4096)
     if len(vert.groups) == 2: # weights are in wrong order (may be impossible, handle anyway)
         return int(vert.groups[1].weight * 4096)
     return 0 # vertex is only weighted to parent
+
+def evmVertFromVert(vert, isFace: bool) -> EVMVertex:
+    return EVMVertex(round(vert.co.x), round(vert.co.y), round(vert.co.z), isFace)
+
+def evmNormFromLoop(loop) -> EVMNormal:
+    return EVMNormal(loop.normal.x * -4096, loop.normal.y * -4096, loop.normal.z * -4096)
+
+def evmUvFromLayerAndLoop(omesh, uvLayer: int, loopIndex: int) -> EVMUv:
+    uv = omesh.uv_layers[uvLayer].uv[loopIndex].vector
+    return EVMUv(uv.x * 4096, (1 - uv.y) * 4096)
 
 def boneIndexFromVertGroup(vertexGroup, obj) -> int:
     boneName = obj.vertex_groups[vertexGroup.group].name
@@ -75,7 +81,10 @@ def main(evm_file: str, collection_name: str):
         if obj.type != "MESH":
             continue
         print("Exporting", obj.name)
-        # For now, let's assume direct re-export (so meshes and bones are still tightly linked, not suitable for distribution)
+        # For now, let's assume direct re-export (so meshes and bones are still tightly linked)
+        omesh = obj.data
+        if bpy.app.version < (4, 1):
+            omesh.calc_normals_split()
         #evm.header.numMesh += 1
         #evm.header.numBones += 1
         
@@ -107,11 +116,11 @@ def main(evm_file: str, collection_name: str):
             elif mat.get("environmentMapFallback") is not None:
                 mesh.environmentMap = mat["environmentMapFallback"]
 
-            if len(obj.data.uv_layers) > 0:
+            if len(omesh.uv_layers) > 0:
                 mesh.uvs = []
-            if len(obj.data.uv_layers) > 1:
+            if len(omesh.uv_layers) > 1:
                 mesh.uvs2 = []
-            if len(obj.data.uv_layers) > 2:
+            if len(omesh.uv_layers) > 2:
                 mesh.uvs3 = []
             
             mesh.weights = []
@@ -119,14 +128,14 @@ def main(evm_file: str, collection_name: str):
             evm.meshes.append(mesh)
         
         # Skinning tables - intermediate step for weights later
-        for polygon in obj.data.polygons:
+        for polygon in omesh.polygons:
             assert(polygon.loop_total == 3) # Not triangulated!
             polyMat = polygon.material_index
             mesh = evm.meshes[polyMat]
             loopIndices = list(range(polygon.loop_start, polygon.loop_start + 3))
-            vertexIndices = [obj.data.loops[j].vertex_index for j in loopIndices]
+            vertexIndices = [omesh.loops[j].vertex_index for j in loopIndices]
             for vertIndex in vertexIndices:
-                vert = obj.data.vertices[vertIndex]
+                vert = omesh.vertices[vertIndex]
                 assert(len(vert.groups) <= 4) # Please Limit Total weights per vertex
                 for bone in vert.groups:
                     boneIndex = boneIndexFromVertGroup(bone, obj)
@@ -165,14 +174,14 @@ def main(evm_file: str, collection_name: str):
         #allSkinningTables: List[List[int]] = [[] for _ in range(len(evm.meshes))]
         
         flip = False
-        for polygon in obj.data.polygons:
+        for polygon in omesh.polygons:
             polyMat = polygon.material_index
             vertexGroup = evm.meshes[polyMat]
             vertsWritten = allVertsWritten[polyMat]
             #someSkinningTables = allSkinningTables[polyMat]
             loopIndices = list(range(polygon.loop_start, polygon.loop_start + 3))
             loopIndices = [loopIndices[0], loopIndices[2], loopIndices[1]]
-            vertexIndices = [obj.data.loops[j].vertex_index for j in loopIndices]
+            vertexIndices = [omesh.loops[j].vertex_index for j in loopIndices]
             if flip:
                 other_check_index = 1
                 compress_add_index = 2
@@ -185,16 +194,15 @@ def main(evm_file: str, collection_name: str):
                 # Optimize, baby!
                 vertsWritten += [vertexIndices[compress_add_index]]
                 #someSkinningTables += [vertexGroup.skinningTable]
-                vert3 = obj.data.vertices[vertexIndices[compress_add_index]]
-                vertexGroup.vertices += [EVMVertex(round(vert3.co.x), round(vert3.co.y), round(vert3.co.z), \
-                                                   True)]
-                vertexGroup.normals += [EVMNormal(vert3.normal.x * -4096, vert3.normal.y * -4096, vert3.normal.z * -4096)]
-                if len(obj.data.uv_layers) > 0:
-                    vertexGroup.uvs += [evmUvFromLayerAndLoop(obj, 0, loopIndices[compress_add_index])]
-                if len(obj.data.uv_layers) > 1:
-                    vertexGroup.uvs2 += [evmUvFromLayerAndLoop(obj, 1, loopIndices[compress_add_index])]
-                if len(obj.data.uv_layers) > 2:
-                    vertexGroup.uvs3 += [evmUvFromLayerAndLoop(obj, 2, loopIndices[compress_add_index])]
+                vert3 = omesh.vertices[vertexIndices[compress_add_index]]
+                vertexGroup.vertices += [evmVertFromVert(vert3, True)]
+                vertexGroup.normals += [evmNormFromLoop(omesh.loops[loopIndices[compress_add_index]])]
+                if len(omesh.uv_layers) > 0:
+                    vertexGroup.uvs += [evmUvFromLayerAndLoop(omesh, 0, loopIndices[compress_add_index])]
+                if len(omesh.uv_layers) > 1:
+                    vertexGroup.uvs2 += [evmUvFromLayerAndLoop(omesh, 1, loopIndices[compress_add_index])]
+                if len(omesh.uv_layers) > 2:
+                    vertexGroup.uvs3 += [evmUvFromLayerAndLoop(omesh, 2, loopIndices[compress_add_index])]
                 vertexGroup.weights += [EVMWeights(
                                         [int(x.weight*128) for x in vert3.groups],
                                         [vertexGroup.skinningTable.index(boneIndexFromVertGroup(x, obj)) << 2 for x in vert3.groups])]
@@ -207,36 +215,32 @@ def main(evm_file: str, collection_name: str):
                 flip = False
                 vertsWritten += vertexIndices
                 #someSkinningTables += [vertexGroup.skinningTable] * 3
-                vert1 = obj.data.vertices[vertexIndices[0]]
-                vert2 = obj.data.vertices[vertexIndices[1]]
-                vert3 = obj.data.vertices[vertexIndices[2]]
+                vert1 = omesh.vertices[vertexIndices[0]]
+                vert2 = omesh.vertices[vertexIndices[1]]
+                vert3 = omesh.vertices[vertexIndices[2]]
                 vertexGroup.vertices += [
-                    EVMVertex(round(vert1.co.x), round(vert1.co.y), round(vert1.co.z), False),
-                    EVMVertex(round(vert2.co.x), round(vert2.co.y), round(vert2.co.z), False),
-                    EVMVertex(round(vert3.co.x), round(vert3.co.y), round(vert3.co.z), True)
+                    evmVertFromVert(vert1, False),
+                    evmVertFromVert(vert2, False),
+                    evmVertFromVert(vert3, True)
                 ]
-                vertexGroup.normals += [
-                    EVMNormal(vert1.normal.x * -4096, vert1.normal.y * -4096, vert1.normal.z * -4096),
-                    EVMNormal(vert2.normal.x * -4096, vert2.normal.y * -4096, vert2.normal.z * -4096),
-                    EVMNormal(vert3.normal.x * -4096, vert3.normal.y * -4096, vert3.normal.z * -4096)
-                ]
+                vertexGroup.normals += [evmNormFromLoop(omesh.loops[loop]) for loop in loopIndices]
                 if len(obj.data.uv_layers) > 0:
                     vertexGroup.uvs += [
-                        evmUvFromLayerAndLoop(obj, 0, loopIndices[0]),
-                        evmUvFromLayerAndLoop(obj, 0, loopIndices[1]),
-                        evmUvFromLayerAndLoop(obj, 0, loopIndices[2])
+                        evmUvFromLayerAndLoop(omesh, 0, loopIndices[0]),
+                        evmUvFromLayerAndLoop(omesh, 0, loopIndices[1]),
+                        evmUvFromLayerAndLoop(omesh, 0, loopIndices[2])
                     ]
                 if len(obj.data.uv_layers) > 1:
                     vertexGroup.uvs2 += [
-                        evmUvFromLayerAndLoop(obj, 1, loopIndices[0]),
-                        evmUvFromLayerAndLoop(obj, 1, loopIndices[1]),
-                        evmUvFromLayerAndLoop(obj, 1, loopIndices[2])
+                        evmUvFromLayerAndLoop(omesh, 1, loopIndices[0]),
+                        evmUvFromLayerAndLoop(omesh, 1, loopIndices[1]),
+                        evmUvFromLayerAndLoop(omesh, 1, loopIndices[2])
                     ]
                 if len(obj.data.uv_layers) > 2:
                     vertexGroup.uvs3 += [
-                        evmUvFromLayerAndLoop(obj, 2, loopIndices[0]),
-                        evmUvFromLayerAndLoop(obj, 2, loopIndices[1]),
-                        evmUvFromLayerAndLoop(obj, 2, loopIndices[2])
+                        evmUvFromLayerAndLoop(omesh, 2, loopIndices[0]),
+                        evmUvFromLayerAndLoop(omesh, 2, loopIndices[1]),
+                        evmUvFromLayerAndLoop(omesh, 2, loopIndices[2])
                     ]
                 vertexGroup.weights += [EVMWeights(
                                         [int(x.weight*128) for x in vert1.groups],
