@@ -1,4 +1,5 @@
 import bpy, bmesh
+from mathutils import Matrix
 
 class SimplifyMGRBones(bpy.types.Operator):
     """Remove "boneXXXX" vertex groups of active object"""
@@ -194,17 +195,32 @@ class SplitByWeightPairs(bpy.types.Operator):
         for i in range(21 + len(additionalMeshes)):
             bpy.data.objects[ogObjName + ".%03d" % (i + 1)].name = ogObjName + ".%03d" % i
         
-        # Finally, we identify the meshes created in the second pass and merge them into the ones from the first pass
+        # We identify the meshes created in the second pass and merge them into the ones from the first pass
         for i, meshNum in enumerate(additionalMeshes):
             # this section written by the fuckin google ai, I mean it's basically just stackoverflow wrt function calls
             bpy.ops.object.select_all(action='DESELECT')
-            bpy.data.objects[ogObjName + ".%03d" % meshNum].select_set(True)
+            newObject = bpy.data.objects[ogObjName + ".%03d" % meshNum]
+            newObject.select_set(True)
             bpy.data.objects[ogObjName + ".%03d" % (21 + i)].select_set(True)
-            bpy.context.view_layer.objects.active = bpy.data.objects[ogObjName + ".%03d" % meshNum]
+            bpy.context.view_layer.objects.active = newObject
             
             bpy.ops.object.join()
             print("Joined %s to %s" % (ogObjName + ".%03d" % (21 + i), ogObjName + ".%03d" % meshNum))
         
+        bones = active_object.parent.data.bones
+        
+        # Correct mesh positions, thanks StackOverflow
+        for meshNum in range(21):
+            obj = bpy.data.objects[ogObjName + ".%03d" % meshNum]
+            obj.name = "kmsMesh%d" % meshNum
+            d = obj.data
+            mw = obj.matrix_world
+            origin = bones[meshNum].head_local - obj.location
+        
+            T = Matrix.Translation(-origin)
+            d.transform(T)
+            mw.translation = mw @ origin
+            print(origin)
         
         return {'FINISHED'}
 

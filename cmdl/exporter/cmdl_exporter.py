@@ -135,15 +135,19 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
                         skinningTable.append(boneIndex)
                     boneWeights.append(group.weight)
                 
-                weightTotal = sum(boneWeights) # NORMALIZE KILLING PEOPLE
+                assert(all([0.0 < x <= 1.0 for x in boneWeights]))
+                weightTotal = sum(boneWeights) # Force normalize
                 for i, weight in enumerate(boneWeights):
                     boneWeights[i] = weight * (1.0 / weightTotal)
                 
                 while len(boneWeights) < 4:
                     boneIndices.append(0)
                     boneWeights.append(0.0)
-                boniSection.data.data.append(boneIndices)
-                bonwSection.data.data.append(boneWeights)
+                # Sort weights in descending order
+                weightPairs = sorted([(boneIndices[i], boneWeights[i]) for i in range(4)],
+                                     key=lambda x: -x[1])
+                boniSection.data.data.append([x[0] for x in weightPairs])
+                bonwSection.data.data.append([x[1] for x in weightPairs])
             vertIndexOffset += len(getVertices(mesh, bigMode))
         
         cmdl.sections.append(boniSection)

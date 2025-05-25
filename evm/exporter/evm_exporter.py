@@ -13,13 +13,6 @@ def cycleThree(x: list[any]):
 def reverseFour(x: list[any]):
     x[0], x[1], x[2], x[3] = x[3], x[2], x[1], x[0]
 
-def getVertWeight(vert) -> int:
-    if vert.groups[0].group == 0: # weight is correct
-        return int(vert.groups[0].weight * 4096)
-    if len(vert.groups) == 2: # weights are in wrong order (may be impossible, handle anyway)
-        return int(vert.groups[1].weight * 4096)
-    return 0 # vertex is only weighted to parent
-
 def evmVertFromVert(vert, isFace: bool) -> EVMVertex:
     return EVMVertex(round(vert.co.x), round(vert.co.y), round(vert.co.z), isFace)
 
@@ -257,6 +250,30 @@ def main(evm_file: str, collection_name: str):
                     vertexGroup.numSkin = len(vert2.groups)
                 if len(vert3.groups) > vertexGroup.numSkin:
                     vertexGroup.numSkin = len(vert3.groups)
+        
+        # Fix weights
+        for vertexGroup in evm.meshes:
+            for vertex in vertexGroup.weights:
+                weightCount = len([x for x in vertex.weights if x > 0])
+                # First, ensure weights sorted
+                weightPairs = sorted([(vertex.indices[i], vertex.weights[i]) for i in range(4)],
+                                     key=lambda x: -x[1])
+                vertex.indices = [x[0] for x in weightPairs]
+                vertex.weights = [x[1] for x in weightPairs]
+                assert(all([0 <= x <= 128 for x in vertex.weights]))
+                # Uhh delete unused weights
+                for i, weight in enumerate(vertex.weights):
+                    if weight == 0:
+                        vertex.indices[i] = 0
+                # Then force-normalize on the last one
+                while sum(vertex.weights) < 128:
+                    vertex.weights[weightCount - 1] += 1
+                while sum(vertex.weights) > 128:
+                    vertex.weights[weightCount - 1] -= 1
+                    if vertex.weights[weightCount - 1] == 0:
+                        weightCount -= 1
+                        vertex.indices[weightCount] = 0
+                assert(weightCount > 0)
         
         # Brute-force block reversed winding
         for i, mesh in enumerate(evm.meshes):
