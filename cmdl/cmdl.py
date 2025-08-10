@@ -94,7 +94,7 @@ class CMDLSection:
     data: CMDLSectionData
     
     def __init__(self, magic="xxxx"):
-        self.magic = bytes(magic)
+        self.magic = bytes(magic, "utf-8")
         self.unknown_04 = 0
         self.unknown_06 = 2
         self.dataOffset = 0
@@ -122,7 +122,8 @@ class CMDLSection:
     
     def fromFile(self, file: BufferedReader):
         self.magic = bytes(reversed(file.read(4)))
-        assert(self.magic in { b"POS0", b"NRM0", b"OIDX" } or self.magic[:3] == b"TEX") # Unexpected section magic
+        if not (self.magic in { b"POS0", b"NRM0", b"OIDX", b"BONI", b"BONW" } or self.magic[:3] == b"TEX"):
+            raise Exception(f"Unexpected section magic {self.magic}")
         self.unknown_04, self.unknown_06, self.dataOffset, pad \
         = struct.unpack("<HHII", file.read(0xC))
         assert(pad == 0) # Expected zero
@@ -135,6 +136,10 @@ class CMDLSection:
             self.data = CMDLNrmData()
         elif self.magic == b"OIDX":
             self.data = CMDLOIdxData()
+        elif self.magic == b"BONI":
+            self.data = CMDLBonIData()
+        elif self.magic == b"BONW":
+            self.data = CMDLBonWData()
         elif self.magic[:3] == b"TEX":
             self.data = CMDLTexData()
         else:
@@ -176,7 +181,7 @@ class CMDLPosData(CMDLSectionData): # Coordinates
         self.data = []
     
     def fromFile(self, file: BufferedReader, fullSize: int):
-        vertCount = fullSize // size
+        vertCount = fullSize // self.size
         self.data = [struct.unpack("<ffff", file.read(0x10)) for _ in range(vertCount)]
         assert(all(x[3] == 1.0 for x in self.data)) # Unexpected "w" (v4) value in vertex position
         
@@ -193,7 +198,7 @@ class CMDLNrmData(CMDLSectionData): # Normals
         self.data = []
     
     def fromFile(self, file: BufferedReader, fullSize: int):
-        vertCount = fullSize // size
+        vertCount = fullSize // self.size
         for _ in range(vertCount):
             # I would like to express my profound gratitude to... I forget where I found this.
             # Either WoefulWolf's Nier2Blender2Nier, Kerilk's bayonetta_tools, or I wrote it myself based on both
@@ -248,7 +253,7 @@ class CMDLTexData(CMDLSectionData): # UV maps
         self.data = []
     
     def fromFile(self, file: BufferedReader, fullSize: int):
-        vertCount = fullSize // size
+        vertCount = fullSize // self.size
         # Everybody loves the half-precision float format (5 bit exponent, 10 bit mantissa)
         self.data = [struct.unpack("<ee", file.read(4)) for _ in range(vertCount)]
         
@@ -265,7 +270,7 @@ class CMDLOIdxData(CMDLSectionData): # Point back to KMS indices
         self.data = []
     
     def fromFile(self, file: BufferedReader, fullSize: int):
-        vertCount = fullSize // size
+        vertCount = fullSize // self.size
         self.data = [struct.unpack("<I", file.read(4))[0] for _ in range(vertCount)]
         
         return self
@@ -281,7 +286,7 @@ class CMDLBonIData(CMDLSectionData): # Bone Indexes (EVM)
         self.data = []
     
     def fromFile(self, file: BufferedReader, fullSize: int):
-        vertCount = fullSize // size
+        vertCount = fullSize // self.size
         self.data = [list(struct.unpack("<4B", file.read(4))) for _ in range(vertCount)]
         
         return self
@@ -298,7 +303,7 @@ class CMDLBonWData(CMDLSectionData): # Bone weights (EVM)
         self.data = []
     
     def fromFile(self, file: BufferedReader, fullSize: int):
-        vertCount = fullSize // size
+        vertCount = fullSize // self.size
         # Everybody loves the half-precision float format (5 bit exponent, 10 bit mantissa)
         self.data = [list(struct.unpack("<4e", file.read(8))) for _ in range(vertCount)]
         
@@ -386,7 +391,7 @@ class CMDLMesh:
         self.boneCount = struct.unpack(">hBIIIII", file.read(23)) # this BS doesn't deserve hexadecimal
         assert(self.unknown_18 == -1) # Expected -1
         assert(self.unknown_1C == 0) # Expected 0
-        for i in range(len(self.boneCount)):
+        for i in range(self.boneCount):
             self.bones.append(struct.unpack(">I", file.read(4))[0])
         self.unknown_2E = file.read(8)
         assert(self.unknown_2E == b"\x80\x80\x80\x80\x80\x80\x80\x80") # Expected... whatever this is
