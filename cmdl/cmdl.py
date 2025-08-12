@@ -94,7 +94,10 @@ class CMDLSection:
     data: CMDLSectionData
     
     def __init__(self, magic="xxxx"):
-        self.magic = bytes(magic, "utf-8")
+        if type(magic) is str:
+            self.magic = bytes(magic, "utf-8")
+        else:
+            self.magic = bytes(magic)
         self.unknown_04 = 0
         self.unknown_06 = 2
         self.dataOffset = 0

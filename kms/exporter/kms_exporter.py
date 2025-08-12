@@ -66,11 +66,10 @@ def main(kms_file: str, collection_name: str):
         # Recursively fix position
         curMesh = kmsMesh.parent
         while curMesh:
-            kmsMesh.pos.x -= curMesh.pos.x
-            kmsMesh.pos.y -= curMesh.pos.y
-            kmsMesh.pos.z -= curMesh.pos.z
+            kmsMesh.pos -= curMesh.pos
             curMesh = curMesh.parent
         
+        kmsMesh.pos -= kms.header.pos
         
         # Create vertex groups from materials
         for materialSlot in obj.material_slots:

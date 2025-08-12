@@ -6,7 +6,7 @@ from ...tri.importer.tri import TRI
 from .rotationWrapperObj import objRotationWrapper
 import bmesh
 
-DEFAULT_BONE_LENGTH = 10
+DEFAULT_BONE_LENGTH = 100
 
 # Credit WoefulWolf/Nier2Blender2Nier
 def reset_blend():
@@ -168,25 +168,23 @@ def construct_armature(kms: KMS, kmsName: str):
     ob.name = kmsName
     bpy.data.collections.get(kmsName).objects.link(ob)
     
-    ob["bboxMin"] = [kms.header.minPos.x, kms.header.minPos.y, kms.header.minPos.z]
-    ob["bboxMax"] = [kms.header.maxPos.x, kms.header.maxPos.y, kms.header.maxPos.z]
+    ob["bboxMin"] = kms.header.minPos.xyz()
+    ob["bboxMax"] = kms.header.maxPos.xyz()
     ob["kmsType"] = kms.header.kmsType
     ob["strcode"] = kms.header.strcode
-    ob.location = (kms.header.pos.x, kms.header.pos.y, kms.header.pos.z)
+    ob.location = tuple(kms.header.pos.xyz())
     
     bpy.context.view_layer.objects.active = ob
     bpy.ops.object.mode_set(mode='EDIT')
     
     for i, mesh in enumerate(kms.meshes):
-        meshPos = [mesh.pos.x, mesh.pos.y, mesh.pos.z]
+        meshPos = mesh.pos
         curMesh = mesh
         while curMesh.parent:
             curMesh = curMesh.parent
-            meshPos[0] += curMesh.pos.x
-            meshPos[1] += curMesh.pos.y
-            meshPos[2] += curMesh.pos.z
+            meshPos += curMesh.pos
         bone = amt.edit_bones.new("bone%d" % i)
-        bone.head = Vector(tuple(meshPos))
+        bone.head = Vector(tuple(meshPos.xyz()))
         bone.tail = bone.head + Vector((0, DEFAULT_BONE_LENGTH, 0))
     
     # Parenting
@@ -353,14 +351,12 @@ def main(kms_file: str, useTri: bool = True):
     
     bMeshes = []
     for i, mesh in enumerate(kms.meshes):
-        meshPos = [mesh.pos.x, mesh.pos.y, mesh.pos.z]
+        meshPos = mesh.pos + kms.header.pos
         curMesh = mesh
         while curMesh.parent:
             curMesh = curMesh.parent
-            meshPos[0] += curMesh.pos.x
-            meshPos[1] += curMesh.pos.y
-            meshPos[2] += curMesh.pos.z
-        bMeshes.append(construct_mesh(mesh, col, i, tuple(meshPos), extract_dir))
+            meshPos += curMesh.pos
+        bMeshes.append(construct_mesh(mesh, col, i, tuple(meshPos.xyz()), extract_dir))
     
     amt = construct_armature(kms, collection_name)
     for mesh in bMeshes:

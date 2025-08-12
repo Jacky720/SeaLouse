@@ -14,6 +14,11 @@ def writePad(padArray: List[int], file: BufferedWriter):
         if pad != 0:
             print("Unexpected non-zero pad written.")
 
+def padOffset(offset: int, pad_amount: int = 0x10):
+    if offset % pad_amount == 0:
+        return offset
+    return offset - (offset % pad_amount) + pad_amount
+
 class EVM:
     header: EVMHeader
     meshes: List[EVMMesh]
@@ -86,13 +91,11 @@ class EVM:
         for mesh in self.meshes:
             mesh.vertexOffset = curExDataOffset
             curExDataOffset += 0x8 * mesh.numVertex
-            if curExDataOffset % 0x10 > 0:
-                curExDataOffset = (curExDataOffset + 0xf) & ~0xf # fun rounding-up trick
+            curExDataOffset = padOffset(curExDataOffset)
         for mesh in self.meshes:
             mesh.normalOffset = curExDataOffset
             curExDataOffset += 0x8 * mesh.numVertex
-            if curExDataOffset % 0x10 > 0:
-                curExDataOffset = (curExDataOffset + 0xf) & ~0xf
+            curExDataOffset = padOffset(curExDataOffset)
 
         for mesh in self.meshes:
             if mesh.uvs != None and any((x.u, x.v) != (0, 0) for x in mesh.uvs):
@@ -101,8 +104,7 @@ class EVM:
             else:
                 mesh.uvOffset = 0
                 mesh.uvs = None
-            if curExDataOffset % 0x10 > 0:
-                curExDataOffset = (curExDataOffset + 0xf) & ~0xf
+            curExDataOffset = padOffset(curExDataOffset)
         for mesh in self.meshes:
             if mesh.uvs2 != None and any((x.u, x.v) != (0, 0) for x in mesh.uvs2):
                 mesh.uv2Offset = curExDataOffset
@@ -110,8 +112,7 @@ class EVM:
             else:
                 mesh.uv2Offset = 0
                 mesh.uvs2 = None
-            if curExDataOffset % 0x10 > 0:
-                curExDataOffset = (curExDataOffset + 0xf) & ~0xf
+            curExDataOffset = padOffset(curExDataOffset)
         for mesh in self.meshes:
             if mesh.uvs3 != None and any((x.u, x.v) != (0, 0) for x in mesh.uvs3):
                 mesh.uv3Offset = curExDataOffset
@@ -119,16 +120,14 @@ class EVM:
             else:
                 mesh.uv3Offset = 0
                 mesh.uvs3 = None
-            if curExDataOffset % 0x10 > 0:
-                curExDataOffset = (curExDataOffset + 0xf) & ~0xf
+            curExDataOffset = padOffset(curExDataOffset)
         for mesh in self.meshes:
             if mesh.weights != None:
                 mesh.weightOffset = curExDataOffset
                 curExDataOffset += 0x8 * mesh.numVertex
             else:
                 mesh.weightOffset = 0
-            if curExDataOffset % 0x10 > 0:
-                curExDataOffset = (curExDataOffset + 0xf) & ~0xf
+            curExDataOffset = padOffset(curExDataOffset)
                 
         for mesh in self.meshes:
             mesh.writeToFile(file)
@@ -256,6 +255,20 @@ class EVMVector3:
     def writeToFile(self, file: BufferedWriter, bigEndian: bool = False):
         formatstr = ">fff" if bigEndian else "<fff"
         file.write(struct.pack(formatstr, self.x, self.y, self.z))
+    
+    """Helper methods"""
+    def xyz(self):
+        return [self.x, self.y, self.z]
+    
+    def __add__(self, other):
+        if type(other) is not EVMVector3:
+            raise TypeError("Can only add EVMVector3 to another EVMVector3")
+        return EVMVector3(self.x + other.x, self.y + other.y, self.z + other.z)
+    
+    def __sub__(self, other):
+        if type(other) is not EVMVector3:
+            raise TypeError("Can only subtract EVMVector3 from another EVMVector3")
+        return EVMVector3(self.x - other.x, self.y - other.y, self.z - other.z)
 
 class EVMVector4:
     x: float
@@ -277,6 +290,20 @@ class EVMVector4:
     def writeToFile(self, file: BufferedWriter, bigEndian: bool = False):
         formatstr = ">ffff" if bigEndian else "<ffff"
         file.write(struct.pack(formatstr, self.x, self.y, self.z, self.w))
+    
+    """Helper methods"""
+    def xyzw(self):
+        return [self.x, self.y, self.z, self.w]
+    
+    def __add__(self, other):
+        if type(other) is not EVMVector4:
+            raise TypeError("Can only add EVMVector4 to another EVMVector4")
+        return EVMVector4(self.x + other.x, self.y + other.y, self.z + other.z, self.w + other.w)
+    
+    def __sub__(self, other):
+        if type(other) is not EVMVector4:
+            raise TypeError("Can only subtract EVMVector4 from another EVMVector4")
+        return EVMVector4(self.x - other.x, self.y - other.y, self.z - other.z, self.w - other.w)
 
 
 class EVMMesh:
@@ -447,6 +474,10 @@ class EVMVertex:
         else:
             self.flags |= 0x8000
         file.write(struct.pack("<hhhH", self.x, self.y, self.z, self.flags))
+    
+    """Helper methods"""
+    def xyz(self):
+        return [self.x, self.y, self.z]
 
 class EVMNormal:
     x: int

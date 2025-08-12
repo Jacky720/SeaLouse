@@ -198,6 +198,20 @@ class KMSVector3:
     def writeToFile(self, file: BufferedWriter, bigEndian: bool = False):
         formatstr = ">fff" if bigEndian else "<fff"
         file.write(struct.pack(formatstr, self.x, self.y, self.z))
+    
+    """Helper methods"""
+    def xyz(self):
+        return [self.x, self.y, self.z]
+    
+    def __add__(self, other):
+        if type(other) is not KMSVector3:
+            raise TypeError("Can only add KMSVector3 to another KMSVector3")
+        return KMSVector3(self.x + other.x, self.y + other.y, self.z + other.z)
+    
+    def __sub__(self, other):
+        if type(other) is not KMSVector3:
+            raise TypeError("Can only subtract KMSVector3 from another KMSVector3")
+        return KMSVector3(self.x - other.x, self.y - other.y, self.z - other.z)
 
 
 class KMSMesh:

@@ -53,7 +53,7 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
     #bpy.context.scene.collection.children.link(bpy.data.collections.new("looseCoords"))
     for i, vertexGroup in enumerate(evm.meshes):
         faceIndexOffset = len(vertices)
-        vertices += [(vert.x, vert.y, vert.z) for vert in vertexGroup.vertices]
+        vertices += [tuple(vert.xyz()) for vert in vertexGroup.vertices]
         #for j, vert in enumerate(vertexGroup.vertices):
         #    target = bpy.data.objects.new(str(j), None)
         #    target.empty_display_size = 0.001
@@ -191,8 +191,8 @@ def construct_armature(evm: EVM, evmName: str):
     ob.name = evmName
     bpy.data.collections.get(evmName).objects.link(ob)
     
-    ob["bboxMin"] = [evm.header.minPos.x, evm.header.minPos.y, evm.header.minPos.z]
-    ob["bboxMax"] = [evm.header.maxPos.x, evm.header.maxPos.y, evm.header.maxPos.z]
+    ob["bboxMin"] = evm.header.minPos.xyz()
+    ob["bboxMax"] = evm.header.maxPos.xyz()
     #ob["evmType"] = evm.header.evmType
     ob["strcode"] = evm.header.strcode
     ob["flag"] = evm.header.flag
@@ -202,7 +202,7 @@ def construct_armature(evm: EVM, evmName: str):
     
     for i, evmBone in enumerate(evm.bones):
         bone = amt.edit_bones.new("bone%d" % i)
-        bone.head = Vector((evmBone.worldPos.x, evmBone.worldPos.y, evmBone.worldPos.z))
+        bone.head = Vector(tuple(evmBone.worldPos.xyz()))
         bone.tail = bone.head + Vector((0, DEFAULT_BONE_LENGTH, 0))
     
     # Parenting
