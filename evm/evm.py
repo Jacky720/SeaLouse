@@ -19,6 +19,7 @@ def padOffset(offset: int, pad_amount: int = 0x10):
         return offset
     return offset - (offset % pad_amount) + pad_amount
 
+
 class EVM:
     header: EVMHeader
     meshes: List[EVMMesh]
@@ -52,7 +53,7 @@ class EVM:
     def writeToFile(self, file: BufferedWriter, vanilla_mode: bool = False):
         self.header.numMeshes = len(self.meshes)
         self.header.numBones = len(self.bones)
-        self.header.numUnknown = len(self.bones)
+        # self.header.fingerIndex = len(self.bones)
         self.header.meshOffset = 0x40 + 0x40 * len(self.bones)
         i = 0
         for mesh in self.meshes:
@@ -160,7 +161,7 @@ class EVM:
 
 
 class EVMHeader:
-    numUnknown: int
+    fingerIndex: int
     numBones: int
     minPos: EVMVector3
     maxPos: EVMVector3
@@ -172,7 +173,7 @@ class EVMHeader:
     pad2: List[int] # 3 items
     
     def __init__(self):
-        self.numUnknown = 0
+        self.fingerIndex = 0
         self.numBones = 0
         self.minPos = EVMVector3()
         self.maxPos = EVMVector3()
@@ -183,7 +184,7 @@ class EVMHeader:
         self.pad2 = [0, 0, 0]
     
     def fromFile(self, file: BufferedReader):
-        self.numUnknown, self.numBones = struct.unpack("<II", file.read(8))
+        self.fingerIndex, self.numBones = struct.unpack("<II", file.read(8))
         self.minPos.fromFile(file)
         self.maxPos.fromFile(file)
         self.strcode, self.pad, self.flag, self.numMeshes, \
@@ -193,7 +194,7 @@ class EVMHeader:
         return self
     
     def writeToFile(self, file: BufferedWriter):
-        file.write(struct.pack("<II", self.numUnknown, self.numBones))
+        file.write(struct.pack("<II", self.fingerIndex, self.numBones))
         self.minPos.writeToFile(file)
         self.maxPos.writeToFile(file)
         file.write(struct.pack("<IIIiI", self.strcode, self.pad, self.flag, self.numMeshes, \

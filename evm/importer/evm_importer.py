@@ -4,6 +4,7 @@ import os
 from mathutils import Vector
 from ...tri.importer.tri import TRI
 from ...kms.importer.rotationWrapperObj import objRotationWrapper
+from ...util.util import getBoneName
 import bmesh
 
 DEFAULT_BONE_LENGTH = 10
@@ -141,7 +142,7 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
         for skinIndex in vertexGroup.skinningTable:
             if skinIndex == 0xff:
                 continue
-            skinName = "bone%d" % skinIndex
+            skinName = getBoneName(skinIndex, evm.header.fingerIndex)
             if not vgroups.get(skinName):
                 vgroups.new(name=skinName)
         
@@ -149,7 +150,7 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
             for j in range(vertexGroup.numSkin):
                 weight = weight_list.weights[j]
                 boneIndex = vertexGroup.skinningTable[weight_list.indices[j] >> 2]
-                vgroups["bone%d" % boneIndex].add([i], weight / 128, "ADD")
+                vgroups[getBoneName(boneIndex, evm.header.fingerIndex)].add([i], weight / 128, "ADD")
             i += 1
     
     if apply_materials(evm, obj, extract_dir):
@@ -201,7 +202,7 @@ def construct_armature(evm: EVM, evmName: str):
     bpy.ops.object.mode_set(mode='EDIT')
     
     for i, evmBone in enumerate(evm.bones):
-        bone = amt.edit_bones.new("bone%d" % i)
+        bone = amt.edit_bones.new(getBoneName(i, evm.header.fingerIndex))
         bone.head = Vector(tuple(evmBone.worldPos.xyz()))
         bone.tail = bone.head + Vector((0, DEFAULT_BONE_LENGTH, 0))
     

@@ -1,5 +1,6 @@
 import bpy
 from ..cmdl import *
+from ...util.util import getBoneIndex, getFingerIndex, getVertWeight
 import os
 from mathutils import Vector
 
@@ -17,17 +18,6 @@ def getVertices(mesh, bigMode: bool):
     # Probably skyrockets RAM usage
     return [mesh.data.vertices[x.vertex_index] for x in getLoops(mesh, True)]
 
-def getVertWeight(vert) -> float:
-    if vert.groups[0].group == 0: # weight is correct
-        return vert.groups[0].weight
-    if len(vert.groups) == 2 and vert.groups[1].group == 0: # weights are in wrong order (may be impossible, handle anyway)
-        return vert.groups[1].weight
-    return 0.0 # vertex is only weighted to parent
-
-# TODO: this and above should probably be from a shared utils file
-def boneIndexFromVertGroup(vertexGroup, obj) -> int:
-    boneName = obj.vertex_groups[vertexGroup.group].name
-    return int(boneName.split("bone")[1])
 
 def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: bool = False):
 
@@ -113,6 +103,9 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
         boniSection = CMDLSection(b"BONI")
         bonwSection = CMDLSection(b"BONW")
         vertIndexOffset = 0
+        
+        fingerIndex = getFingerIndex([bone.name for bone in bones])
+        
         for mesh in meshes:
             #kmsOidxLookup = list(mesh["kmsVertSideChannel"])
             # TODO: make this work with multiple meshes (heck, test if the rest of it works with multiple meshes)
@@ -127,7 +120,7 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
                 for group in vertex.groups:
                     if group.weight == 0:
                         continue
-                    boneIndex = boneIndexFromVertGroup(group, mesh)
+                    boneIndex = getBoneIndex(mesh.vertex_groups[group.group].name, fingerIndex)
                     if boneIndex in skinningTable:
                         boneIndices.append(skinningTable.index(boneIndex))
                     else:
@@ -148,6 +141,7 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
                                      key=lambda x: -x[1])
                 boniSection.data.data.append([x[0] for x in weightPairs])
                 bonwSection.data.data.append([x[1] for x in weightPairs])
+                print(weightPairs)
             vertIndexOffset += len(getVertices(mesh, bigMode))
         
         cmdl.sections.append(boniSection)
@@ -161,6 +155,8 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
     for mesh in meshes:
         kmsOidxLookup = list(mesh["kmsVertSideChannel"])
         for vertex in getVertices(mesh, bigMode):
+            if vertex.index not in kmsOidxLookup:
+                print(mesh.name, kmsOidxLookup)
             oidxSection.data.data.append(kmsOidxLookup.index(vertex.index) + vertIndexOffset)
         vertIndexOffset += len(getVertices(mesh, bigMode))
     

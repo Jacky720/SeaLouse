@@ -1,5 +1,6 @@
 import bpy
 from ..evm import *
+from ...util.util import getBoneIndex, getFingerIndex
 import os
 from mathutils import Vector
 
@@ -23,9 +24,10 @@ def evmUvFromLayerAndLoop(omesh, uvLayer: int, loopIndex: int) -> EVMUv:
     uv = omesh.uv_layers[uvLayer].uv[loopIndex].vector
     return EVMUv(uv.x * 4096, (1 - uv.y) * 4096)
 
-def boneIndexFromVertGroup(vertexGroup, obj) -> int:
-    boneName = obj.vertex_groups[vertexGroup.group].name
-    return int(boneName.split("bone")[1])
+def skinnedIndexFromVertGroup(evmMesh: EVMMesh, vertexGroup) -> int:
+    boneName = evmMesh.obj.vertex_groups[vertexGroup.group].name
+    boneIndex = getBoneIndex(boneName, evmMesh.fingerIndex)
+    return evmMesh.skinningTable.index(boneIndex)
 
 
 def main(evm_file: str, collection_name: str):
@@ -46,9 +48,13 @@ def main(evm_file: str, collection_name: str):
     amt.select_set(True)
     bpy.context.view_layer.objects.active = amt
     bpy.ops.object.mode_set(mode='EDIT')
+    
+    fingerIndex = getFingerIndex([x.name for x in amt.data.edit_bones])
+    evm.header.fingerIndex = fingerIndex
+    
     for bone in amt.data.edit_bones:
         print(bone.name)
-        evmBone = evm.bones[int(bone.name.split("bone")[1])]
+        evmBone = evm.bones[getBoneIndex(bone.name, fingerIndex)]
         evmBone.worldPos.x = bone.head.x
         evmBone.worldPos.y = bone.head.y
         evmBone.worldPos.z = bone.head.z
@@ -56,7 +62,7 @@ def main(evm_file: str, collection_name: str):
         evmBone.relativePos.y = bone.head.y
         evmBone.relativePos.z = bone.head.z
         if bone.parent:
-            evmBone.parentInd = int(bone.parent.name.split("bone")[1])
+            evmBone.parentInd = getBoneIndex(bone.parent.name, fingerIndex)
             evmBone.relativePos.x -= bone.parent.head.x
             evmBone.relativePos.y -= bone.parent.head.y
             evmBone.relativePos.z -= bone.parent.head.z
@@ -125,13 +131,18 @@ def main(evm_file: str, collection_name: str):
             assert(polygon.loop_total == 3) # Not triangulated!
             polyMat = polygon.material_index
             mesh = evm.meshes[polyMat]
+            # Hey mesh, hold these variables for me rq?
+            mesh.obj = obj
+            mesh.fingerIndex = fingerIndex
+            # thanks
+            
             loopIndices = list(range(polygon.loop_start, polygon.loop_start + 3))
             vertexIndices = [omesh.loops[j].vertex_index for j in loopIndices]
             for vertIndex in vertexIndices:
                 vert = omesh.vertices[vertIndex]
                 assert(len(vert.groups) <= 4) # Please Limit Total weights per vertex
                 for bone in vert.groups:
-                    boneIndex = boneIndexFromVertGroup(bone, obj)
+                    boneIndex = getBoneIndex(obj.vertex_groups[bone.group].name, fingerIndex)
                     if boneIndex not in mesh.skinningTable:
                         if mesh.numSkin == 8:
                             raise Exception("Material %d (%s) has too many weights" % (polyMat, obj.material_slots[polyMat].name))
@@ -170,6 +181,12 @@ def main(evm_file: str, collection_name: str):
         for polygon in omesh.polygons:
             polyMat = polygon.material_index
             vertexGroup = evm.meshes[polyMat]
+            
+            # Hey mesh, hold these variables for me rq?
+            vertexGroup.obj = obj
+            vertexGroup.fingerIndex = fingerIndex
+            # thanks
+            
             vertsWritten = allVertsWritten[polyMat]
             #someSkinningTables = allSkinningTables[polyMat]
             loopIndices = list(range(polygon.loop_start, polygon.loop_start + 3))
@@ -198,7 +215,7 @@ def main(evm_file: str, collection_name: str):
                     vertexGroup.uvs3 += [evmUvFromLayerAndLoop(omesh, 2, loopIndices[compress_add_index])]
                 vertexGroup.weights += [EVMWeights(
                                         [int(x.weight*128) for x in vert3.groups],
-                                        [vertexGroup.skinningTable.index(boneIndexFromVertGroup(x, obj)) << 2 for x in vert3.groups])]
+                                        [skinnedIndexFromVertGroup(vertexGroup, x) << 2 for x in vert3.groups])]
                 if len(vert3.groups) > vertexGroup.numSkin:
                     vertexGroup.numSkin = len(vert3.groups)
                 flip = not flip
@@ -237,13 +254,13 @@ def main(evm_file: str, collection_name: str):
                     ]
                 vertexGroup.weights += [EVMWeights(
                                         [int(x.weight*128) for x in vert1.groups],
-                                        [vertexGroup.skinningTable.index(boneIndexFromVertGroup(x, obj)) << 2 for x in vert1.groups]),
+                                        [skinnedIndexFromVertGroup(vertexGroup, x) << 2 for x in vert1.groups]),
                                         EVMWeights(
                                         [int(x.weight*128) for x in vert2.groups],
-                                        [vertexGroup.skinningTable.index(boneIndexFromVertGroup(x, obj)) << 2 for x in vert2.groups]),
+                                        [skinnedIndexFromVertGroup(vertexGroup, x) << 2 for x in vert2.groups]),
                                         EVMWeights(
                                         [int(x.weight*128) for x in vert3.groups],
-                                        [vertexGroup.skinningTable.index(boneIndexFromVertGroup(x, obj)) << 2 for x in vert3.groups])]
+                                        [skinnedIndexFromVertGroup(vertexGroup, x) << 2 for x in vert3.groups])]
                 if len(vert1.groups) > vertexGroup.numSkin:
                     vertexGroup.numSkin = len(vert1.groups)
                 if len(vert2.groups) > vertexGroup.numSkin:
@@ -274,6 +291,7 @@ def main(evm_file: str, collection_name: str):
                         weightCount -= 1
                         vertex.indices[weightCount] = 0
                 assert(weightCount > 0)
+                print(vertex.indices, vertex.weights)
         
         # Brute-force block reversed winding
         for i, mesh in enumerate(evm.meshes):

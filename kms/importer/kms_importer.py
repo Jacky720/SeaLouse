@@ -3,6 +3,7 @@ from ..kms import *
 import os
 from mathutils import Vector
 from ...tri.importer.tri import TRI
+from ...util.util import getBoneName
 from .rotationWrapperObj import objRotationWrapper
 import bmesh
 
@@ -119,13 +120,13 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
     #print("\n".join([str(x.vertex_index) + " " + str(x.normal.x) for x in objmesh.loops[:10]]))
     
     # Bone weights
-    obj.vertex_groups.new(name="bone%d" % meshInd)
-    group = obj.vertex_groups["bone%d" % meshInd]
+    obj.vertex_groups.new(name=getBoneName(meshInd))
+    group = obj.vertex_groups[getBoneName(meshInd)]
     for i, x in enumerate(weights):
         group.add([i], x / 4096, "REPLACE")
     if mesh.parent: # 2 bones
-        obj.vertex_groups.new(name="bone%d" % mesh.parentInd)
-        parentGroup = obj.vertex_groups["bone%d" % mesh.parentInd]
+        obj.vertex_groups.new(name=getBoneName(mesh.parentInd))
+        parentGroup = obj.vertex_groups[getBoneName(mesh.parentInd)]
         for i, x in enumerate(weights):
             parentGroup.add([i], 1 - x / 4096, "REPLACE")
     
@@ -183,7 +184,7 @@ def construct_armature(kms: KMS, kmsName: str):
         while curMesh.parent:
             curMesh = curMesh.parent
             meshPos += curMesh.pos
-        bone = amt.edit_bones.new("bone%d" % i)
+        bone = amt.edit_bones.new(getBoneName(i))
         bone.head = Vector(tuple(meshPos.xyz()))
         bone.tail = bone.head + Vector((0, DEFAULT_BONE_LENGTH, 0))
     

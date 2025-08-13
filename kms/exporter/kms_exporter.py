@@ -1,14 +1,12 @@
 import bpy
 from ..kms import *
+from ...util.util import getBoneName, getBoneIndex
+from ...util.util import getVertWeight as rawVertWeight
 import os
 from mathutils import Vector
 
 def getVertWeight(vert) -> int:
-    if vert.groups[0].group == 0: # weight is correct
-        return int(vert.groups[0].weight * 4096)
-    if len(vert.groups) == 2: # weights are in wrong order (may be impossible, handle anyway)
-        return int(vert.groups[1].weight * 4096)
-    return 0 # vertex is only weighted to parent
+    return int(rawVertWeight(vert) * 4096)
 
 def kmsVertFromVert(vert) -> KMSVertex:
     return KMSVertex(round(vert.co.x), round(vert.co.y), round(vert.co.z), getVertWeight(vert))
@@ -19,6 +17,7 @@ def kmsNormFromLoop(loop, isFace: bool) -> KMSNormal:
 def kmsUvFromLayerAndLoop(mesh, uvLayer: int, loopIndex: int) -> KMSUv:
     uv = mesh.uv_layers[uvLayer].uv[loopIndex].vector
     return KMSUv(uv.x * 4096, (1 - uv.y) * 4096)
+
 
 def main(kms_file: str, collection_name: str):
     kms = KMS()
@@ -58,10 +57,10 @@ def main(kms_file: str, collection_name: str):
         kmsMesh.maxPos.y = obj.bound_box[6][1]
         kmsMesh.maxPos.z = obj.bound_box[6][2]
 
-        bone = bones["bone" + obj.name.split('Mesh')[1]]
+        bone = bones[getBoneName(int(obj.name.split('Mesh')[1]))]
         kmsMesh.parentInd = -1
         if bone.parent:
-            kmsMesh.parentInd = int(bone.parent.name[4:])
+            kmsMesh.parentInd = getBoneIndex(bone.parent.name)
             kmsMesh.parent = kms.meshes[kmsMesh.parentInd]
         # Recursively fix position
         curMesh = kmsMesh.parent

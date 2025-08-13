@@ -1,5 +1,6 @@
 import bpy, bmesh
 from mathutils import Matrix
+from .util import mgrBoneMap
 
 class SimplifyMGRBones(bpy.types.Operator):
     """Remove "boneXXXX" vertex groups of active object"""
@@ -45,62 +46,6 @@ class SimplifyMGRBones(bpy.types.Operator):
         return {'FINISHED'}
 
 
-kmsBoneNameArray = [
-    "HIP",
-    "spine_1",
-    "spine_3",
-    "shoulder_R", # bone3
-    "upper_arm_R",
-    "lower_arm_R",
-    "hand_R",
-    "shoulder_L", # bone7
-    "upper_arm_L",
-    "lower_arm_L",
-    "hand_L",
-    "neck", # bone11
-    "head_dummy",
-    "upper_leg_R", # bone13
-    "lower_leg_R",
-    "foot_R",
-    "toe_R",
-    "upper_leg_L", # bone17
-    "lower_leg_L",
-    "foot_L",
-    "toe_L",
-    "head", # bone21 - duplicate of bone12, gets all the weights on EVM
-    "lower_lip_side_L", # bone22
-    "lower_lip_side_R",
-    "lower_lip_corner_L",
-    "lower_lip_corner_R",
-    "eye_L", # bone26
-    "eye_R",
-    "eyebrow_upper_L", # bone28
-    "eyebrow_L",
-    "eyebrow_lower_L",
-    "eyebrow_upper_R",
-    "eyebrow_R",
-    "eyebrow_lower_R",
-    "upper_lip_side_L", # bone34
-    "upper_lip_side_R",
-    "upper_lip_corner_L",
-    "upper_lip_corner_R",
-    "outer_cheek_L", # bone38
-    "outer_cheek_R",
-    "nostril_L", # bone40
-    "nostril_R",
-    "jaw", # bone42
-    "inner_cheek_L", # bone43
-    "inner_cheek_R",
-    "lower_eyelid_1_L", # bit of a cheat, this should be just lower eyelid
-    "lower_eyelid_1_R",
-    "lower_eyelid_2_L", # really corner eyelid
-    "upper_eyelid_2_L",
-    "upper_eyelid_1_L",
-    "lower_eyelid_2_R", # really corner eyelid
-    "upper_eyelid_2_R",
-    "upper_eyelid_1_R" # bone52
-]
-
 class MgrToMgsBones(bpy.types.Operator):
     """Rename vertex weights on selected mesh to bone0, bone1, etc"""
     bl_idname = "sealouse.mgrtomgsbones"
@@ -114,8 +59,8 @@ class MgrToMgsBones(bpy.types.Operator):
         print("Converting bones on", active_object.name)
         for vertex_group in active_object.vertex_groups:
             print("Converting", vertex_group.name)
-            assert(vertex_group.name in kmsBoneNameArray) # Unsupported bone detected, see log for last bone
-            vertex_group.name = "bone%d" % kmsBoneNameArray.index(vertex_group.name)
+            assert(vertex_group.name in mgrBoneMap) # Unsupported bone detected, see log for last bone
+            vertex_group.name = mgrBoneMap[vertex_group.name]
 
         print("Bone name conversion succeeded!")
 
