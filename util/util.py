@@ -75,14 +75,19 @@ evmFingerArray = [x + "_R" for x in evmFingerArray] + [x + "_L" for x in evmFing
 def getBoneName(boneIndex: int, fingerIndex: int = -1):
     if fingerIndex >= 0 and boneIndex >= fingerIndex:
         return evmFingerArray[boneIndex - fingerIndex]
-    else:
+    elif 0 <= boneIndex < len(kmsBoneNames):
         return kmsBoneNames[boneIndex]
+    else:
+        return f"bone{boneIndex}"
 
 def getBoneIndex(boneName: str, fingerIndex: int = 0):
     if boneName in evmFingerArray:
         return fingerIndex + evmFingerArray.index(boneName)
-    else:
+    elif boneName in kmsBoneNames:
         return kmsBoneNames.index(boneName)
+    elif boneName.startswith("bone") and boneName[4:].isnumeric():
+        return int(boneName[4:])
+    raise ValueError(f"Could not recognize bone name {boneName}")
 
 def getFingerIndex(boneNames: list[str]):
     return sum(1 if x in kmsBoneNames else 0 for x in boneNames)
