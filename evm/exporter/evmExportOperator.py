@@ -29,7 +29,10 @@ class ExportMgsEvm(bpy.types.Operator, ExportHelper):
                 from ...cmdl.exporter import cmdl_exporter
                 split_path = os.path.split(self.filepath)
                 cmdl_basename = split_path[1].replace(".evm", ".cmdl")
-                cmdl_path = os.path.join(split_path[0], "_win", cmdl_basename)
+                win_folder = os.path.join(split_path[0], "_win")
+                if not os.path.exists(win_folder):
+                    os.mkdir(win_folder)
+                cmdl_path = os.path.join(win_folder, cmdl_basename)
                 print("Saving", cmdl_path)
                 cmdl_exporter.main(cmdl_path, colName, True, self.big_cmdl)
                 print('CMDL COMPLETE :)')
