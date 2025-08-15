@@ -1,5 +1,4 @@
 from __future__ import annotations
-import bpy
 from io import BufferedReader, BufferedWriter
 import struct
 from os import path
@@ -30,17 +29,17 @@ class TRI:
     def dumpById(self, extract_dir: str, texID: int):
         for entry in self.textures:
             if entry.texID == texID:
-                textureBuffer = header.initPartialProcessBuffer(0)
-                clutBuffer = header.initPartialProcessBuffer(1)
+                textureBuffer = self.header.initPartialProcessBuffer(0)
+                clutBuffer = self.header.initPartialProcessBuffer(1)
                 return entry.dumpTexture(extract_dir, textureBuffer, clutBuffer)
         return None
     
     def dumpByIndex(self, extract_dir: str, index: int):
-        if not (0 <= index < len(textures)):
+        if not (0 <= index < len(self.textures)):
             return None
         
-        textureBuffer = header.initPartialProcessBuffer(0)
-        clutBuffer = header.initPartialProcessBuffer(1)
+        textureBuffer = self.header.initPartialProcessBuffer(0)
+        clutBuffer = self.header.initPartialProcessBuffer(1)
         
         return self.textures[index].dumpTexture(extract_dir, textureBuffer, clutBuffer)
         
@@ -202,7 +201,7 @@ class TRIEntry:
             texBuffer = readTexPSMT4(self.registerInfo2.tbp0, self.registerInfo2.tbw, texX, texY, texWidth, texHeight, textureBuffer)
             print("PSM 0x14, alpha", self.registerInfo2.has_alpha)
         else:
-            print("Failed to export texture %d.tga: Unrecognized PSM" % self.texID)
+            print(f"Failed to export texture {self.texID}.tga: Unrecognized PSM {hex(self.registerInfo2.psm)}")
             return None
         
         if self.registerInfo2.cpsm == 0 and self.registerInfo2.csm == 0:
@@ -221,6 +220,10 @@ class TRIEntry:
             return None
         
         pixels = paintPixels(specialClutBuffer, texBuffer, texWidth, texHeight)
+        
+        if pixels is None:
+            print("Failed to export texture %d.tga: paintPixels error" % self.texID)
+            return None
         
         out_path = path.join(extract_dir, "%d.tga" % self.texID)
         
@@ -487,8 +490,11 @@ def paintPixels(clut: List[int], pixels: List[int], width: int, height: int) -> 
             pixel = pixels[pixelPos // 4][pixelPos % 4]
             clutPix = clut[pixel]
             #print(clutPix[2], clutPix[1], clutPix[0], ((clutPix[3] * 255) // 0x80))
+            if clutPix[3] > 0x80:  # Invalid clut
+                print("paintPixels: Invalid alpha in clut at %d, %d" % (x, y))
+                return None
             texture += struct.pack("BBBB", \
-            clutPix[2], clutPix[1], clutPix[0], ((clutPix[3] * 255) // 0x80))
+            clutPix[2], clutPix[1], clutPix[0], (clutPix[3] * 0xff) // 0x80)
             #clutPix[2], clutPix[1], clutPix[0], clutPix[3])
     return texture
 
@@ -505,7 +511,7 @@ wordArrangement32: List[int] = [
 
 def readTexPSMCT32(dbp: int, dbw: int, dsax: int, dsay: int, rrw: int, rrh: int, halfBuffer: List[int]):
     dbp <<= 6
-    result = [0] * (1024 * 1024)
+    result = [0] * (rrh * rrw)
     i = 0
     for y in range(dsay, dsay + rrh):
         for x in range(dsax, dsax + rrw):
