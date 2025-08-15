@@ -1,6 +1,6 @@
 import bpy, bmesh
 from mathutils import Matrix
-from .util import mgrBoneMap
+from .util import mgrBoneMap, expected_parent_bones
 
 class SimplifyMGRBones(bpy.types.Operator):
     """Remove "boneXXXX" vertex groups of active object"""
@@ -78,7 +78,6 @@ class SplitByWeightPairs(bpy.types.Operator):
         assert(active_object.type == "MESH") # Please run this operator on a mesh
         
         weight_name_lookup = [x.name for x in active_object.vertex_groups]
-        bone_parent_lookup = [-1, 0, 1, 2, 3, 4, 5, 2, 7, 8, 9, 2, 11, 0, 13, 14, 15, 0, 17, 18, 19]
         
         # First pass freebies (creates obj.001 through obj.021)
         bpy.ops.object.mode_set(mode='EDIT')
@@ -96,7 +95,7 @@ class SplitByWeightPairs(bpy.types.Operator):
                         continue
                     weight = weight_name_lookup[group.group]
                     #print(weight)
-                    if weight != ("bone%d" % i) and weight != ("bone%d" % bone_parent_lookup[i]):
+                    if weight != ("bone%d" % i) and weight != ("bone%d" % expected_parent_bones[i]):
                         vert.select = False
                         vertCount -= 1
                         break

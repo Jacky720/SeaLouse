@@ -27,11 +27,12 @@ def main(kms_file: str, collection_name: str):
     amt = [x for x in collection.all_objects if x.type == "ARMATURE"][0]
     kms.header.kmsType = amt["kmsType"]
     kms.header.strcode = amt["strcode"]
-    kms.header.minPos = KMSVector3(amt["bboxMin"][0], amt["bboxMin"][1], amt["bboxMin"][2])
-    kms.header.maxPos = KMSVector3(amt["bboxMax"][0], amt["bboxMax"][1], amt["bboxMax"][2])
-    kms.header.pos = KMSVector3(amt.location.x, amt.location.y, amt.location.z)
+    kms.header.minPos = KMSVector3().set(amt["bboxMin"])
+    kms.header.maxPos = KMSVector3().set(amt["bboxMax"])
+    kms.header.pos = KMSVector3().set(amt.location)
     
     bones = amt.data.bones
+    forceBoneCount = len(bones)
     
     for obj in collection.all_objects:
         if obj.type != "MESH":
@@ -46,18 +47,16 @@ def main(kms_file: str, collection_name: str):
         
         kmsMesh = KMSMesh()
         kmsMesh.flag = obj['flag'] if 'flag' in obj else 1
+        
+        meshIndex = int(obj.name.split('Mesh')[1])
+        bone = bones.get(getBoneName(meshIndex)) or bones[meshIndex]
+        if bone.name == 'head_2' and len(bones) == 22:
+            # Hair doesn't actually get a bone in KMS?
+            forceBoneCount = 21
+        kmsMesh.pos.set(bone.head)
+        kmsMesh.minPos.set(obj.bound_box[0])
+        kmsMesh.maxPos.set(obj.bound_box[6])
 
-        kmsMesh.pos.x = obj.location.x
-        kmsMesh.pos.y = obj.location.y
-        kmsMesh.pos.z = obj.location.z
-        kmsMesh.minPos.x = obj.bound_box[0][0]
-        kmsMesh.minPos.y = obj.bound_box[0][1]
-        kmsMesh.minPos.z = obj.bound_box[0][2]
-        kmsMesh.maxPos.x = obj.bound_box[6][0]
-        kmsMesh.maxPos.y = obj.bound_box[6][1]
-        kmsMesh.maxPos.z = obj.bound_box[6][2]
-
-        bone = bones[getBoneName(int(obj.name.split('Mesh')[1]))]
         kmsMesh.parentInd = -1
         if bone.parent:
             kmsMesh.parentInd = getBoneIndex(bone.parent.name)
@@ -131,11 +130,11 @@ def main(kms_file: str, collection_name: str):
                 vertsWritten += [vertexIndices[compress_add_index]]
                 vertexGroup.vertices += [kmsVertFromVert(mesh.vertices[vertexIndices[compress_add_index]])]
                 vertexGroup.normals += [kmsNormFromLoop(mesh.loops[loopIndices[compress_add_index]], True)]
-                if len(mesh.uv_layers) > 0:
+                if vertexGroup.uvs is not None:
                     vertexGroup.uvs += [kmsUvFromLayerAndLoop(mesh, 0, loopIndices[compress_add_index])]
-                if len(mesh.uv_layers) > 1:
+                if vertexGroup.uvs2 is not None:
                     vertexGroup.uvs2 += [kmsUvFromLayerAndLoop(mesh, 1, loopIndices[compress_add_index])]
-                if len(mesh.uv_layers) > 2:
+                if vertexGroup.uvs3 is not None:
                     vertexGroup.uvs3 += [kmsUvFromLayerAndLoop(mesh, 2, loopIndices[compress_add_index])]
                 flip = not flip
             else:
@@ -147,19 +146,19 @@ def main(kms_file: str, collection_name: str):
                     kmsNormFromLoop(mesh.loops[loopIndices[1]], False),
                     kmsNormFromLoop(mesh.loops[loopIndices[2]], True)
                 ]
-                if len(mesh.uv_layers) > 0:
+                if vertexGroup.uvs is not None:
                     vertexGroup.uvs += [
                         kmsUvFromLayerAndLoop(mesh, 0, loopIndices[0]),
                         kmsUvFromLayerAndLoop(mesh, 0, loopIndices[1]),
                         kmsUvFromLayerAndLoop(mesh, 0, loopIndices[2])
                     ]
-                if len(mesh.uv_layers) > 1:
+                if vertexGroup.uvs2 is not None:
                     vertexGroup.uvs2 += [
                         kmsUvFromLayerAndLoop(mesh, 1, loopIndices[0]),
                         kmsUvFromLayerAndLoop(mesh, 1, loopIndices[1]),
                         kmsUvFromLayerAndLoop(mesh, 1, loopIndices[2])
                     ]
-                if len(mesh.uv_layers) > 2:
+                if vertexGroup.uvs3 is not None:
                     vertexGroup.uvs3 += [
                         kmsUvFromLayerAndLoop(mesh, 2, loopIndices[0]),
                         kmsUvFromLayerAndLoop(mesh, 2, loopIndices[1]),
@@ -167,9 +166,18 @@ def main(kms_file: str, collection_name: str):
                     ]
                 flip = False
         
+        for vertexGroup in kmsMesh.vertexGroups:
+            # Delete null UVs
+            if vertexGroup.uvs and all((uv.u, uv.v) == (0, 4096) for uv in vertexGroup.uvs):
+                vertexGroup.uvs = None
+            if vertexGroup.uvs2 and all((uv.u, uv.v) == (0, 4096) for uv in vertexGroup.uvs2):
+                vertexGroup.uvs2 = None
+            if vertexGroup.uvs3 and all((uv.u, uv.v) == (0, 4096) for uv in vertexGroup.uvs3):
+                vertexGroup.uvs3 = None
+        
         obj['kmsVertSideChannel'] = sum(allVertsWritten, []) # flatten
         kms.meshes.append(kmsMesh)
     
     with open(kms_file, "wb") as f:
-        kms.writeToFile(f)
+        kms.writeToFile(f, forceBoneCount=forceBoneCount)
     return {'FINISHED'}

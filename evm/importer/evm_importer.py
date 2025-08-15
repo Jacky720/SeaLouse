@@ -4,7 +4,7 @@ import os
 from mathutils import Vector
 from ...tri.importer.tri import TRI
 from ...kms.importer.rotationWrapperObj import objRotationWrapper
-from ...util.util import getBoneName
+from ...util.util import getBoneName, expected_parent_bones
 import bmesh
 
 DEFAULT_BONE_LENGTH = 10
@@ -40,7 +40,7 @@ def set_partent(parent, child):
     parent.select_set(False)
 
 
-def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
+def construct_mesh(evm: EVM, evmCollection, extract_dir: str, hasHumanBones: bool):
     print("Importing mesh")
     vertices = []
     normals = []
@@ -142,7 +142,7 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
         for skinIndex in vertexGroup.skinningTable:
             if skinIndex == 0xff:
                 continue
-            skinName = getBoneName(skinIndex, evm.header.fingerIndex)
+            skinName = getBoneName(skinIndex, evm.header.fingerIndex) if hasHumanBones else f"bone{skinIndex}"
             if not vgroups.get(skinName):
                 vgroups.new(name=skinName)
         
@@ -150,7 +150,8 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
             for j in range(vertexGroup.numSkin):
                 weight = weight_list.weights[j]
                 boneIndex = vertexGroup.skinningTable[weight_list.indices[j] >> 2]
-                vgroups[getBoneName(boneIndex, evm.header.fingerIndex)].add([i], weight / 128, "ADD")
+                boneName = getBoneName(boneIndex, evm.header.fingerIndex) if hasHumanBones else f"bone{boneIndex}"
+                vgroups[boneName].add([i], weight / 128, "ADD")
             i += 1
     
     if apply_materials(evm, obj, extract_dir):
@@ -185,7 +186,7 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str):
     
     return obj
 
-def construct_armature(evm: EVM, evmName: str):
+def construct_armature(evm: EVM, evmName: str, hasHumanBones: bool):
     print("Creating armature")
     amt = bpy.data.armatures.new(evmName +'Amt')
     ob = bpy.data.objects.new(evmName, amt)
@@ -202,7 +203,8 @@ def construct_armature(evm: EVM, evmName: str):
     bpy.ops.object.mode_set(mode='EDIT')
     
     for i, evmBone in enumerate(evm.bones):
-        bone = amt.edit_bones.new(getBoneName(i, evm.header.fingerIndex))
+        boneName = getBoneName(i, evm.header.fingerIndex) if hasHumanBones else f"bone{i}"
+        bone = amt.edit_bones.new(boneName)
         bone.head = Vector(tuple(evmBone.worldPos.xyz()))
         bone.tail = bone.head + Vector((0, DEFAULT_BONE_LENGTH, 0))
     
@@ -368,8 +370,11 @@ def main(evm_file: str, useTri: bool = True):
     if useTri:
         fetch_textures(evm, evm_file)
     
-    mesh = construct_mesh(evm, col, extract_dir)
-    amt = construct_armature(evm, collection_name)
+    parentBoneList = [bone.parentInd for bone in evm.bones]
+    hasHumanBones = parentBoneList[:len(expected_parent_bones)] == expected_parent_bones
+    
+    mesh = construct_mesh(evm, col, extract_dir, hasHumanBones)
+    amt = construct_armature(evm, collection_name, hasHumanBones)
     set_partent(amt, mesh)
     
     objRotationWrapper(amt)

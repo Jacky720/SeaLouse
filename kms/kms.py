@@ -24,10 +24,12 @@ class KMS:
         
         return self
     
-    def writeToFile(self, file: BufferedWriter, vanilla_mode: bool = False):
+    def writeToFile(self, file: BufferedWriter, forceBoneCount: int = -1):
         self.header.numMesh = len(self.meshes)
-        if not vanilla_mode:
+        if forceBoneCount == -1:
             self.header.numBones = len(self.meshes)
+        else:
+            self.header.numBones = forceBoneCount
         i = 0
         for mesh in self.meshes:
             mesh.numVertexGroup = len(mesh.vertexGroups)
@@ -139,8 +141,8 @@ class KMS:
 
 class KMSHeader:
     kmsType: int
-    numMesh: int
     numBones: int
+    numMesh: int
     pad: int
     strcode: int
     pad2: int
@@ -151,8 +153,8 @@ class KMSHeader:
     
     def __init__(self):
         self.kmsType = 0
-        self.numMesh = 0
         self.numBones = 0
+        self.numMesh = 0
         self.pad = 0
         self.strcode = 0
         self.pad2 = 0
@@ -162,7 +164,7 @@ class KMSHeader:
         self.pos = KMSVector3()
     
     def fromFile(self, file: BufferedReader):
-        self.kmsType, self.numMesh, self.numBones, self.pad, \
+        self.kmsType, self.numBones, self.numMesh, self.pad, \
         self.strcode, self.pad2, self.pad3 \
         = struct.unpack("<IIiIIII", file.read(0x1C))
         self.minPos.fromFile(file)
@@ -173,7 +175,7 @@ class KMSHeader:
     
     def writeToFile(self, file: BufferedWriter):
         file.write(struct.pack("<IIiIIII", \
-        self.kmsType, self.numMesh, self.numBones, self.pad, \
+        self.kmsType, self.numBones, self.numMesh, self.pad, \
         self.strcode, self.pad2, self.pad3))
         self.minPos.writeToFile(file)
         self.maxPos.writeToFile(file)
@@ -202,6 +204,12 @@ class KMSVector3:
     """Helper methods"""
     def xyz(self):
         return [self.x, self.y, self.z]
+    
+    def set(self, iterVal):
+        self.x = iterVal[0]
+        self.y = iterVal[1]
+        self.z = iterVal[2]
+        return self
     
     def __add__(self, other):
         if type(other) is not KMSVector3:

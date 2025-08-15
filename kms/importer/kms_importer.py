@@ -3,7 +3,7 @@ from ..kms import *
 import os
 from mathutils import Vector
 from ...tri.importer.tri import TRI
-from ...util.util import getBoneName
+from ...util.util import getBoneName, expected_parent_bones
 from .rotationWrapperObj import objRotationWrapper
 import bmesh
 
@@ -38,8 +38,8 @@ def set_partent(parent, child):
     parent.select_set(False)
 
 
-def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_dir: str):
-    print("Importing mesh", meshInd)
+def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_dir: str, hasHumanBones: bool):
+    print(f"Importing mesh {meshInd}, parent {mesh.parentInd}, pos {meshPos}")
     vertices = []
     normals = []
     faces = []
@@ -120,13 +120,14 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
     #print("\n".join([str(x.vertex_index) + " " + str(x.normal.x) for x in objmesh.loops[:10]]))
     
     # Bone weights
-    obj.vertex_groups.new(name=getBoneName(meshInd))
-    group = obj.vertex_groups[getBoneName(meshInd)]
+    boneName = getBoneName(meshInd) if hasHumanBones else f"bone{meshInd}"
+    obj.vertex_groups.new(name=boneName)
+    group = obj.vertex_groups[boneName]
     for i, x in enumerate(weights):
         group.add([i], x / 4096, "REPLACE")
     if mesh.parent: # 2 bones
-        obj.vertex_groups.new(name=getBoneName(mesh.parentInd))
-        parentGroup = obj.vertex_groups[getBoneName(mesh.parentInd)]
+        parentBoneName = getBoneName(mesh.parentInd) if hasHumanBones else f"bone{mesh.parentInd}"
+        parentGroup = obj.vertex_groups.new(name=parentBoneName)
         for i, x in enumerate(weights):
             parentGroup.add([i], 1 - x / 4096, "REPLACE")
     
@@ -162,7 +163,7 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
     
     return obj
 
-def construct_armature(kms: KMS, kmsName: str):
+def construct_armature(kms: KMS, kmsName: str, hasHumanBones: bool):
     print("Creating armature")
     amt = bpy.data.armatures.new(kmsName +'Amt')
     ob = bpy.data.objects.new(kmsName, amt)
@@ -184,22 +185,22 @@ def construct_armature(kms: KMS, kmsName: str):
         while curMesh.parent:
             curMesh = curMesh.parent
             meshPos += curMesh.pos
-        bone = amt.edit_bones.new(getBoneName(i))
+        bone = amt.edit_bones.new(getBoneName(i) if hasHumanBones else f"bone{i}")
         bone.head = Vector(tuple(meshPos.xyz()))
         bone.tail = bone.head + Vector((0, DEFAULT_BONE_LENGTH, 0))
     
     # Parenting
     bones = amt.edit_bones
-    for i, mesh in enumerate(kms.meshes):
+    for i, bone in enumerate(bones):
+        mesh = kms.meshes[i]
         if mesh.parentInd == -1:
             continue
-        bone = bones[i]
         bone.parent = bones[mesh.parentInd]
         # Join bones
         if bone.parent.tail == bone.parent.head + Vector((0, DEFAULT_BONE_LENGTH, 0)):
             bone.parent.tail = bone.head
             dist = bone.parent.head - bone.parent.tail
-            if abs(dist.x) + abs(dist.y) + abs(dist.z) < DEFAULT_BONE_LENGTH:
+            if abs(dist.x) + abs(dist.y) + abs(dist.z) < 10:
                 bone.parent.tail += Vector((0, DEFAULT_BONE_LENGTH, 0))
     
     bpy.ops.object.mode_set(mode='OBJECT')
@@ -350,16 +351,21 @@ def main(kms_file: str, useTri: bool = True):
     if useTri:
         fetch_textures(kms, kms_file)
     
+    parentBoneList = [mesh.parentInd for mesh in kms.meshes]
+    hasHumanBones = parentBoneList[:len(expected_parent_bones)] == expected_parent_bones
+    
     bMeshes = []
     for i, mesh in enumerate(kms.meshes):
-        meshPos = mesh.pos + kms.header.pos
+        meshPos = kms.header.pos
+        if i < kms.header.numBones:  # ?? Hair technically has no bone and just uses head pos
+            meshPos += mesh.pos
         curMesh = mesh
         while curMesh.parent:
             curMesh = curMesh.parent
             meshPos += curMesh.pos
-        bMeshes.append(construct_mesh(mesh, col, i, tuple(meshPos.xyz()), extract_dir))
+        bMeshes.append(construct_mesh(mesh, col, i, tuple(meshPos.xyz()), extract_dir, hasHumanBones))
     
-    amt = construct_armature(kms, collection_name)
+    amt = construct_armature(kms, collection_name, hasHumanBones)
     for mesh in bMeshes:
         set_partent(amt, mesh)
     

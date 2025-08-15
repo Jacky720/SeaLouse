@@ -59,6 +59,8 @@ kmsBoneNameArray = [
 kmsBoneNames = [x[0] if type(x) is tuple else x for x in kmsBoneNameArray]
 mgrBoneNames = [x[1] if type(x) is tuple else x for x in kmsBoneNameArray]
 
+expected_parent_bones = [-1, 0, 1, 2, 3, 4, 5, 2, 7, 8, 9, 2, 11, 0, 13, 14, 15, 0, 17, 18, 19]
+
 mgrBoneMap = {x: kmsBoneNames[i] for i, x in enumerate(mgrBoneNames)}
 
 evmFingerArray = [
