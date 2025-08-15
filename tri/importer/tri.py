@@ -101,7 +101,10 @@ class TRIHeader:
             rawData = self.rawClut
             height = self.clutHeight
         
-        result = [0] * (1024 * 1024)
+        resSize = (height // 32) * 2048
+        if height % 32 != 0: # ceil()
+            resSize += 2048
+        result = [0] * resSize
         i = 0
         for y in range(height):
             for x in range(64):
