@@ -208,15 +208,15 @@ class TRIEntry:
             return None
         
         if self.registerInfo2.cpsm == 0 and self.registerInfo2.csm == 0:
-            specialClutBuffer = readTexPSMCT32(self.registerInfo2.cbp, 1, self.registerInfo2.csa * 8, 0, clutWidth, clutHeight, clutBuffer)
+            specialClutBuffer = readTexPSMCT32(self.registerInfo2.cbp, 1, self.registerInfo2.csax * 8, self.registerInfo2.csay * 2, clutWidth, clutHeight, clutBuffer)
             if self.registerInfo2.psm == 0x13:
                 specialClutBuffer = unswizzleClut(specialClutBuffer)
             
             if all([x == 0 for x in specialClutBuffer]):
-                print("Invalid clut! CBP: %d, CSA: %d" % (self.registerInfo2.cbp, self.registerInfo2.csa))
+                print("Invalid clut! CBP: %d, CSAX: %d, CSAY: %d" % (self.registerInfo2.cbp, self.registerInfo2.csax, self.registerInfo2.csay))
                 specialClutBuffer = readTexPSMCT32(0, 1, 0, 0, clutWidth, clutHeight, clutBuffer)
             else:
-                print("Valid clut: CBP: %d, CSA: %d" % (self.registerInfo2.cbp, self.registerInfo2.csa))
+                print("Valid clut: CBP: %d, CSAX: %d, CSAY: %d" % (self.registerInfo2.cbp, self.registerInfo2.csax, self.registerInfo2.csay))
         else:
             #specialClutBuffer = [0] * (1024 * 1024)
             print("Failed to export texture %d.tga: Unrecognized CPSM %d CSM %d" % (self.texID, self.registerInfo2.cpsm, self.registerInfo2.csm))
@@ -273,7 +273,8 @@ class GsTex0:
 	# CBP : 14; // CLUT Buffer Base Pointer
 	# CPSM : 4; // CLUT Storage Format
 	# CSM : 1; // CLUT Storage Mode
-	# CSA : 5; // CLUT Offset
+	# CSAX : 1; // CLUT Offset X
+	# CSAY : 4; // CLUT Offset Y
 	# CLD : 3; // CLUT Load Control
     rawData: int
     
@@ -307,7 +308,8 @@ class GsTex0:
         self.cbp = self.getBits(37, 14)
         self.cpsm = self.getBits(51, 4)
         self.csm = self.getBits(55, 1)
-        self.csa = self.getBits(56, 5)
+        self.csax = self.getBits(56, 1)
+        self.csay = self.getBits(57, 4)
         self.cld = self.getBits(61, 3)
         return self
     
@@ -328,7 +330,8 @@ class GsTex0:
         self.putBits(37, 14, self.cbp)
         self.putBits(51, 4, self.cpsm)
         self.putBits(55, 1, self.csm)
-        self.putBits(56, 5, self.csa)
+        self.putBits(56, 1, self.csax)
+        self.putBits(57, 4, self.csay)
         self.putBits(61, 3, self.cld)
         file.write(struct.pack("<Q", self.rawData))
 
@@ -535,7 +538,10 @@ def readTexPSMCT32(dbp: int, dbw: int, dsax: int, dsay: int, rrw: int, rrh: int,
             cy = y % 2
             word = wordArrangement32[cx + cy * 8]
             
-            result[i] = halfBuffer[dbp + page * 2048 + block * 64 + column * 16 + word]
+            try:
+                result[i] = halfBuffer[dbp + page * 2048 + block * 64 + column * 16 + word]
+            except:
+                print(len(result), len(halfBuffer), i, dbp + page * 2048 + block * 64 + column * 16 + word)
             i += 1
     
     return result
