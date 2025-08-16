@@ -31,7 +31,8 @@ def main(kms_file: str, collection_name: str):
     kms.header.maxPos = KMSVector3().set(amt["bboxMax"])
     kms.header.pos = KMSVector3().set(amt.location)
     
-    bones = amt.data.bones
+    bpy.ops.object.mode_set(mode='EDIT')
+    bones = amt.data.edit_bones
     forceBoneCount = len(bones)
     
     for obj in collection.all_objects:
@@ -126,7 +127,7 @@ def main(kms_file: str, collection_name: str):
             if len(vertsWritten) > 0 and \
                vertexIndices[other_check_index] == vertsWritten[-1] and \
                vertexIndices[0] == vertsWritten[-2]:
-                # Optimize, baby!
+                # Optimize!
                 vertsWritten += [vertexIndices[compress_add_index]]
                 vertexGroup.vertices += [kmsVertFromVert(mesh.vertices[vertexIndices[compress_add_index]])]
                 vertexGroup.normals += [kmsNormFromLoop(mesh.loops[loopIndices[compress_add_index]], True)]
@@ -177,6 +178,8 @@ def main(kms_file: str, collection_name: str):
         
         obj['kmsVertSideChannel'] = sum(allVertsWritten, []) # flatten
         kms.meshes.append(kmsMesh)
+    
+    bpy.ops.object.mode_set(mode='OBJECT')
     
     with open(kms_file, "wb") as f:
         kms.writeToFile(f, forceBoneCount=forceBoneCount)
