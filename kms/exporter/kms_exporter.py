@@ -1,7 +1,8 @@
 import bpy
 from ..kms import *
-from ...util.util import getBoneName, getBoneIndex
+from ...util.util import getBoneName, getBoneIndex, replaceExt
 from ...util.util import getVertWeight as rawVertWeight
+from ...ctxr.ctxr import DDS, ctxr_lookup_path
 import os
 from mathutils import Vector
 
@@ -19,7 +20,83 @@ def kmsUvFromLayerAndLoop(mesh, uvLayer: int, loopIndex: int) -> KMSUv:
     return KMSUv(uv.x * 4096, (1 - uv.y) * 4096)
 
 
-def main(kms_file: str, collection_name: str):
+class TextureSave:
+    ctxr_id_lookup: dict
+    textures_to_save: set[bpy.types.Image]
+
+    def __init__(self):
+        self.ctxr_id_lookup = {}
+        self.textures_to_save = set()
+        
+        with open(ctxr_lookup_path, "rt") as f:
+            for line in f.readlines():
+                tga_num = os.path.splitext(line.split()[1])[0]
+                self.ctxr_id_lookup[line.split()[2]] = int(tga_num)
+    
+    def get_map(self, mat: bpy.types.Material, mapType: str) -> int:
+        nodes = mat.node_tree.nodes
+        mapType = mapType.lower()
+        if "map" not in mapType:
+            mapType += "Map"
+        mapType = mapType.replace("map", "Map")
+        
+        mapID = 0
+        matchImage = None
+        
+        if nodes.get(f"g_{mapType.capitalize()}") is not None:
+            matchImage = nodes[f"g_{mapType.capitalize()}"].image
+        elif mat.get(f"{mapType}Fallback") is not None:
+            mapID = mat[f"{mapType}Fallback"]
+        if not matchImage and "Principled BSDF" in nodes:  # Check anything
+            principled = nodes["Principled BSDF"]
+            if mapType == 'colorMap':
+                inputName = "Base Color"
+            elif mapType == 'specularMap':
+                if "Specular" in principled.inputs:
+                    inputName = "Specular"
+                else:
+                    inputName = "Specular IOR Level"
+            elif mapType == 'environmentMap':
+                inputName = "Metallic"
+            else:
+                return mapID
+            
+            if len(principled.inputs[inputName].links) != 1 \
+                or principled.inputs[inputName].links[0].from_node.type != 'TEX_IMAGE':
+                return mapID
+            
+            matchImage = principled.inputs[inputName].links[0].from_node.image
+        
+        if matchImage is not None:
+            matchImageName, matchImageExt = os.path.splitext(matchImage.name)
+            # TGA detection takes priority over fallback ID
+            if matchImageName.isnumeric() and matchImageExt == ".tga":
+                mapID = int(matchImageName)
+            elif matchImageExt == ".dds" and matchImageName + ".png" in self.ctxr_id_lookup:
+                self.textures_to_save.add(matchImage)
+                # DDS detection does not have priority over fallback ID
+                if not mapID:
+                    mapID = self.ctxr_id_lookup[matchImageName + ".png"]
+        
+        return mapID
+    
+    def save_textures(self, extract_dir: str):
+        for image in self.textures_to_save:
+            ctxr_name = replaceExt(image.name, "ctxr")
+            print("Packing image", ctxr_name)
+            if not os.path.exists(image.filepath_from_user()):
+                print("Error: Could not locate image on disk, skipping.")
+                continue
+            with open(image.filepath_from_user(), "rb") as f:
+                dds = DDS().fromFile(f)
+            ctxr = dds.convertCTXR()
+            if "_ovl_sub_alp.bmp" in ctxr_name:
+                # Specular maps/transparent textures need different parameters
+                ctxr.header.unknown4 = [0, 0, 0, 2, 2, 2, 0, 2, 2, 2, 0x68, 0xff, 0xff, 0, 0, 0, 0, 0]
+            with open(os.path.join(extract_dir, ctxr_name), "wb") as f:
+                ctxr.writeToFile(f)
+
+def main(kms_file: str, collection_name: str, ctxr_dir: str = None):
     kms = KMS()
     
     collection = bpy.data.collections[collection_name]
@@ -31,9 +108,14 @@ def main(kms_file: str, collection_name: str):
     kms.header.maxPos = KMSVector3().set(amt["bboxMax"])
     kms.header.pos = KMSVector3().set(amt.location)
     
+    bpy.ops.object.select_all(action='DESELECT')
+    amt.select_set(True)
+    bpy.context.view_layer.objects.active = amt
     bpy.ops.object.mode_set(mode='EDIT')
     bones = amt.data.edit_bones
     forceBoneCount = len(bones)
+    
+    texSave = TextureSave()
     
     for obj in collection.all_objects:
         if obj.type != "MESH":
@@ -54,6 +136,7 @@ def main(kms_file: str, collection_name: str):
         if bone.name == 'head_2' and len(bones) == 22:
             # Hair doesn't actually get a bone in KMS?
             forceBoneCount = 21
+        print(f"Making mesh for bone {bone.name}, pos {tuple(bone.head)}")
         kmsMesh.pos.set(bone.head)
         kmsMesh.minPos.set(obj.bound_box[0])
         kmsMesh.maxPos.set(obj.bound_box[6])
@@ -83,21 +166,9 @@ def main(kms_file: str, collection_name: str):
             else:
                 vertexGroup.flag = 761
             
-            nodes = mat.node_tree.nodes
-            if nodes.get("g_ColorMap") is not None:
-                vertexGroup.colorMap = int(nodes["g_ColorMap"].image.name.split('.')[0])
-            elif mat.get("colorMapFallback") is not None:
-                vertexGroup.colorMap = mat["colorMapFallback"]
-
-            if nodes.get("g_SpecularMap") is not None:
-                vertexGroup.specularMap = int(nodes["g_SpecularMap"].image.name.split('.')[0])
-            elif mat.get("specularMapFallback") is not None:
-                vertexGroup.specularMap = mat["specularMapFallback"]
-
-            if nodes.get("g_EnvironmentMap") is not None:
-                vertexGroup.environmentMap = int(nodes["g_EnvironmentMap"].image.name.split('.')[0])
-            elif mat.get("environmentMapFallback") is not None:
-                vertexGroup.environmentMap = mat["environmentMapFallback"]
+            vertexGroup.colorMap = texSave.get_map(mat, "colorMap")
+            vertexGroup.specularMap = texSave.get_map(mat, "specularMap")
+            vertexGroup.environmentMap = texSave.get_map(mat, "environmentMap")
 
             if len(mesh.uv_layers) > 0:
                 vertexGroup.uvs = []
@@ -180,6 +251,11 @@ def main(kms_file: str, collection_name: str):
         kms.meshes.append(kmsMesh)
     
     bpy.ops.object.mode_set(mode='OBJECT')
+    
+    if ctxr_dir:
+        print("Saving new CTXRs...")
+        texSave.save_textures(ctxr_dir)
+        print("CTXR COMPLETE :)")
     
     with open(kms_file, "wb") as f:
         kms.writeToFile(f, forceBoneCount=forceBoneCount)
