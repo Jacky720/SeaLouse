@@ -61,11 +61,15 @@ class TextureSave:
             else:
                 return mapID
             
-            if len(principled.inputs[inputName].links) != 1 \
-                or principled.inputs[inputName].links[0].from_node.type != 'TEX_IMAGE':
+            if len(principled.inputs[inputName].links) != 1:
                 return mapID
-            
-            matchImage = principled.inputs[inputName].links[0].from_node.image
+            fromNode = principled.inputs[inputName].links[0].from_node
+            if fromNode.bl_idname == 'ShaderNodeTexImage'
+                matchImage = fromNode.image
+            elif fromNode.bl_idname == 'ShaderNodeMath' and len(fromNode.inputs[0].links) == 1:
+                matchImage = fromNode.inputs[0].links[0].from_node.image
+            else:
+                return mapID
         
         if matchImage is not None:
             matchImageName, matchImageExt = os.path.splitext(matchImage.name)

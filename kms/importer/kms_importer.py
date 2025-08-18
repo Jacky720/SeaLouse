@@ -257,6 +257,18 @@ class TextureLoad:
         bpy.data.images.load(mapPath)
         return bpy.data.images.get(mapName)
 
+def make_alpha_multiplier(node_tree, image_node):
+    nodes = node_tree.nodes
+    links = node_tree.links
+    alpha_multiplier = nodes.new(type='ShaderNodeMath')
+    alpha_multiplier.label = 'Multiply Alpha'
+    alpha_multiplier.location = (image_node.location[0] + 300, image_node.location[1])
+    alpha_multiplier.operation = 'MULTIPLY'
+    alpha_multiplier.inputs[1].default_value = 2.0
+    links.new(image_node.outputs['Alpha'], alpha_multiplier.inputs[0])
+    alpha_multiplier.hide = True
+    return alpha_multiplier
+
 def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad):
     if mesh.numVertexGroup == 0:
         return False
@@ -268,8 +280,8 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad
         # Enable Nodes
         material.use_nodes = True
         # Render properties
-        material.blend_method = 'CLIP'
-        material.alpha_threshold = 0.05
+        material.blend_method = 'HASHED'
+        material.use_backface_culling = True
         # Clear Nodes and Links
         material.node_tree.links.clear()
         material.node_tree.nodes.clear()
@@ -294,7 +306,10 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad
             color_image.name = "g_ColorMap"
             color_image.label = "g_ColorMap"
             links.new(color_image.outputs['Color'], principled.inputs['Base Color'])
-            links.new(color_image.outputs['Alpha'], principled.inputs['Alpha'])
+            output_alpha = color_image.outputs['Alpha']
+            if texLoader.ctxr_dir:
+                output_alpha = make_alpha_multiplier(material.node_tree, color_image).outputs[0]
+            links.new(output_alpha, principled.inputs['Alpha'])
         elif vertexGroup.colorMap > 0:
             material["colorMapFallback"] = vertexGroup.colorMap
         
@@ -307,10 +322,13 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad
             specular_image.hide = True
             specular_image.name = "g_SpecularMap"
             specular_image.label = "g_SpecularMap"
+            output_alpha = specular_image.outputs['Alpha']
+            if texLoader.ctxr_dir:
+                output_alpha = make_alpha_multiplier(material.node_tree, specular_image).outputs[0]
             if 'Specular' in principled.inputs:
-                links.new(specular_image.outputs['Alpha'], principled.inputs['Specular'])
+                links.new(output_alpha, principled.inputs['Specular'])
             else:
-                links.new(specular_image.outputs['Alpha'], principled.inputs['Specular IOR Level'])
+                links.new(output_alpha, principled.inputs['Specular IOR Level'])
         elif vertexGroup.specularMap > 0:
             material["specularMapFallback"] = vertexGroup.specularMap
         
@@ -329,7 +347,10 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad
             env_image.hide = True
             env_image.name = "g_EnvironmentMap"
             env_image.label = "g_EnvironmentMap"
-            links.new(env_image.outputs['Alpha'], principled.inputs['Metallic'])
+            output_alpha = env_image.outputs['Alpha']
+            if texLoader.ctxr_dir:
+                output_alpha = make_alpha_multiplier(material.node_tree, env_image).outputs[0]
+            links.new(output_alpha, principled.inputs['Metallic'])
         elif vertexGroup.environmentMap > 0:
             material["environmentMapFallback"] = vertexGroup.environmentMap
         
