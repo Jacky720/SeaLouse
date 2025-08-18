@@ -4,6 +4,7 @@ import os
 from mathutils import Vector
 from ...tri.tri import TRI
 from ...kms.importer.rotationWrapperObj import objRotationWrapper
+from ...kms.importer.kms_importer import TextureLoad, make_alpha_multiplier
 from ...util.util import getBoneName, expected_parent_bones
 import bmesh
 
@@ -40,7 +41,7 @@ def set_partent(parent, child):
     parent.select_set(False)
 
 
-def construct_mesh(evm: EVM, evmCollection, extract_dir: str, hasHumanBones: bool):
+def construct_mesh(evm: EVM, evmCollection, extract_dir: str, hasHumanBones: bool, texLoader: TextureLoad):
     print("Importing mesh")
     vertices = []
     normals = []
@@ -154,7 +155,7 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str, hasHumanBones: boo
                 vgroups[boneName].add([i], weight / 128, "ADD")
             i += 1
     
-    if apply_materials(evm, obj, extract_dir):
+    if apply_materials(evm, obj, extract_dir, texLoader):
         bm = bmesh.new()
         bm.from_mesh(objmesh)
         uv_layer = bm.loops.layers.uv.new("UVMap1")
@@ -225,43 +226,7 @@ def construct_armature(evm: EVM, evmName: str, hasHumanBones: bool):
     bpy.ops.object.mode_set(mode='OBJECT')
     return ob
 
-def fetch_textures(evm: EVM, evm_file: str) -> int:
-    tri_file = evm_file[:-4] + ".tri"
-    extract_dir = os.path.split(evm_file)[0]
-    extract_dir = os.path.join(extract_dir, "sealouse_extract")
-    if not os.path.exists(tri_file):
-        evm_dir, tri_name = os.path.split(tri_file)
-        evm_parent_dir, region = os.path.split(evm_dir)
-        asset_dir = os.path.split(evm_parent_dir)[0]
-        tri_file = os.path.join(asset_dir, "tri", region, tri_name)
-    if not os.path.exists(tri_file):
-        return -1
-    
-    tri = TRI()
-    with open(tri_file, "rb") as f:
-        tri.fromFile(f)
-    os.makedirs(extract_dir, exist_ok=True)
-    tri.dumpTextures(extract_dir)
-    return tri.header.numTexture
-
-def get_texture(extract_dir: str, mapID: int) -> bpy.types.Image | None:
-    if mapID == 0:
-        return None
-    mapName = "%d.tga" % mapID
-    #remapped = open("C:/Users/jackm/AppData/Roaming/Blender Foundation/Blender/3.6/scripts/addons/SeaLouse/tri/importer/ctxrmapping.txt", 'rt')
-    #for x in remapped.readlines():
-    #    if x.split()[1] == mapName:
-    #        mapName = x.split()[0]
-    #        break
-    if bpy.data.images.get(mapName) is not None:
-        return bpy.data.images.get(mapName)
-    mapPath = os.path.join(extract_dir, mapName) # "ctxr",
-    if not os.path.exists(mapPath):
-        return None
-    bpy.data.images.load(mapPath)
-    return bpy.data.images.get(mapName)
-
-def apply_materials(evm: EVM, obj, extract_dir: str):
+def apply_materials(evm: EVM, obj, extract_dir: str, texLoader: TextureLoad):
     if evm.header.numMeshes == 0:
         return False
     
@@ -272,8 +237,8 @@ def apply_materials(evm: EVM, obj, extract_dir: str):
         # Enable Nodes
         material.use_nodes = True
         # Render properties
-        material.blend_method = 'CLIP'
-        material.alpha_threshold = 0.05
+        material.blend_method = 'HASHED'
+        material.use_backface_culling = True
         # Clear Nodes and Links
         material.node_tree.links.clear()
         material.node_tree.nodes.clear()
@@ -287,7 +252,7 @@ def apply_materials(evm: EVM, obj, extract_dir: str):
         principled.location = 900,0
         output_link = links.new( principled.outputs['BSDF'], output.inputs['Surface'] )
     
-        colorMap = get_texture(extract_dir, vertexGroup.colorMap)
+        colorMap = texLoader.get_texture(vertexGroup.colorMap)
         if colorMap is not None:
             color_image = nodes.new(type='ShaderNodeTexImage')
             color_image.location = 0,0
@@ -298,11 +263,14 @@ def apply_materials(evm: EVM, obj, extract_dir: str):
             color_image.name = "g_ColorMap"
             color_image.label = "g_ColorMap"
             links.new(color_image.outputs['Color'], principled.inputs['Base Color'])
-            links.new(color_image.outputs['Alpha'], principled.inputs['Alpha'])
+            output_alpha = color_image.outputs['Alpha']
+            if texLoader.ctxr_dir:
+                output_alpha = make_alpha_multiplier(material.node_tree, color_image).outputs[0]
+            links.new(output_alpha, principled.inputs['Alpha'])
         elif vertexGroup.colorMap > 0:
             material["colorMapFallback"] = vertexGroup.colorMap
         
-        specularMap = get_texture(extract_dir, vertexGroup.specularMap)
+        specularMap = texLoader.get_texture(vertexGroup.specularMap)
         if specularMap is not None:
             specular_image = nodes.new(type='ShaderNodeTexImage')
             specular_image.location = 0,-60
@@ -311,10 +279,13 @@ def apply_materials(evm: EVM, obj, extract_dir: str):
             specular_image.hide = True
             specular_image.name = "g_SpecularMap"
             specular_image.label = "g_SpecularMap"
+            output_alpha = specular_image.outputs['Alpha']
+            if texLoader.ctxr_dir:
+                output_alpha = make_alpha_multiplier(material.node_tree, specular_image).outputs[0]
             if 'Specular' in principled.inputs:
-                links.new(specular_image.outputs['Alpha'], principled.inputs['Specular'])
+                links.new(output_alpha, principled.inputs['Specular'])
             else:
-                links.new(specular_image.outputs['Alpha'], principled.inputs['Specular IOR Level'])
+                links.new(output_alpha, principled.inputs['Specular IOR Level'])
         elif vertexGroup.specularMap > 0:
             material["specularMapFallback"] = vertexGroup.specularMap
         
@@ -323,7 +294,7 @@ def apply_materials(evm: EVM, obj, extract_dir: str):
         else:
             principled.inputs['Specular IOR Level'].default_value = 0.0
         
-        envMap = get_texture(extract_dir, vertexGroup.environmentMap)
+        envMap = texLoader.get_texture(vertexGroup.environmentMap)
         if envMap is not None:
             env_image = nodes.new(type='ShaderNodeTexImage')
             env_image.location = 0,-120
@@ -333,20 +304,23 @@ def apply_materials(evm: EVM, obj, extract_dir: str):
             env_image.hide = True
             env_image.name = "g_EnvironmentMap"
             env_image.label = "g_EnvironmentMap"
-            links.new(env_image.outputs['Alpha'], principled.inputs['Metallic'])
+            output_alpha = env_image.outputs['Alpha']
+            if texLoader.ctxr_dir:
+                output_alpha = make_alpha_multiplier(material.node_tree, env_image).outputs[0]
+            links.new(output_alpha, principled.inputs['Metallic'])
         elif vertexGroup.environmentMap > 0:
             material["environmentMapFallback"] = vertexGroup.environmentMap
         
         obj.data.materials.append(material)
     return True
 
-def main(evm_file: str, useTri: bool = True):
+def main(evm_file: str, ctxr_path: str = None, overwrite_existing: bool = False):
     evm = EVM()
     with open(evm_file, "rb") as f:
         evm.fromFile(f)
     
     
-    extract_dir, evmname = os.path.split(evm_file) # Split only splits into head and tail, but since we want the last part, we don't need to split the head with evm_file.split(os.sep)
+    extract_dir, evmname = os.path.split(evm_file)
     extract_dir = os.path.join(extract_dir, "sealouse_extract")
 
     evmCollection = bpy.data.collections.get("EVM")
@@ -357,23 +331,20 @@ def main(evm_file: str, useTri: bool = True):
     collection_name = evmname[:-4]
     if bpy.data.collections.get(collection_name): # oops, duplicate
         collection_suffix = 1
-        while True:
-            if not bpy.data.collections.get("%s.%03d" % (collection_name, collection_suffix)):
-                collection_name += ".%03d" % collection_suffix
-                break
+        while bpy.data.collections.get(f"{collection_name}.{collection_suffix:03}"):
             collection_suffix += 1
+        collection_name += f".{collection_suffix:03}"
     col = bpy.data.collections.new(collection_name)
     
     evmCollection.children.link(col)
     #bpy.context.view_layer.active_layer_collection = bpy.context.view_layer.layer_collection.children[-1]
     
-    if useTri:
-        fetch_textures(evm, evm_file)
-    
     parentBoneList = [bone.parentInd for bone in evm.bones]
     hasHumanBones = parentBoneList[:len(expected_parent_bones)] == expected_parent_bones
     
-    mesh = construct_mesh(evm, col, extract_dir, hasHumanBones)
+    texLoader = TextureLoad(extract_dir, ctxr_path, overwrite_existing)
+    
+    mesh = construct_mesh(evm, col, extract_dir, hasHumanBones, texLoader)
     amt = construct_armature(evm, collection_name, hasHumanBones)
     set_partent(amt, mesh)
     

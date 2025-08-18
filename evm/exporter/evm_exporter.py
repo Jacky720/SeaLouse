@@ -1,6 +1,7 @@
 import bpy
 from ..evm import *
 from ...util.util import getBoneIndex, getFingerIndex
+from ...kms.exporter.kms_exporter import TextureSave
 import os
 from mathutils import Vector
 
@@ -30,7 +31,7 @@ def skinnedIndexFromVertGroup(evmMesh: EVMMesh, vertexGroup) -> int:
     return evmMesh.skinningTable.index(boneIndex)
 
 
-def main(evm_file: str, collection_name: str):
+def main(evm_file: str, collection_name: str, ctxr_dir: str = None):
     evm = EVM()
     
     collection = bpy.data.collections[collection_name]
@@ -76,6 +77,8 @@ def main(evm_file: str, collection_name: str):
         evmBone.maxPos.z = mesh.bound_box[6][2]
     bpy.ops.object.mode_set(mode='OBJECT')
     
+    texSave = TextureSave()
+    
     for i, obj in enumerate(collection.all_objects):
         if obj.type != "MESH":
             continue
@@ -100,20 +103,9 @@ def main(evm_file: str, collection_name: str):
                 mesh.flag = 760
             
             nodes = mat.node_tree.nodes
-            if nodes.get("g_ColorMap") is not None:
-                mesh.colorMap = int(nodes["g_ColorMap"].image.name.split('.')[0])
-            elif mat.get("colorMapFallback") is not None:
-                mesh.colorMap = mat["colorMapFallback"]
-
-            if nodes.get("g_SpecularMap") is not None:
-                mesh.specularMap = int(nodes["g_SpecularMap"].image.name.split('.')[0])
-            elif mat.get("specularMapFallback") is not None:
-                mesh.specularMap = mat["specularMapFallback"]
-
-            if nodes.get("g_EnvironmentMap") is not None:
-                mesh.environmentMap = int(nodes["g_EnvironmentMap"].image.name.split('.')[0])
-            elif mat.get("environmentMapFallback") is not None:
-                mesh.environmentMap = mat["environmentMapFallback"]
+            mesh.colorMap = texSave.get_map(mat, "colorMap")
+            mesh.specularMap = texSave.get_map(mat, "specularMap")
+            mesh.environmentMap = texSave.get_map(mat, "environmentMap")
 
             if len(omesh.uv_layers) > 0:
                 mesh.uvs = []
@@ -364,6 +356,11 @@ def main(evm_file: str, collection_name: str):
         
         obj['kmsVertSideChannel'] = sum(allVertsWritten, []) # flatten
         #obj['evmSkinSideChannel'] = sum(allSkinningTables, [])
+    
+    if ctxr_dir:
+        print("Saving new CTXRs...")
+        texSave.save_textures(ctxr_dir)
+        print("CTXR COMPLETE :)")
     
     with open(evm_file, "wb") as f:
         evm.writeToFile(f)
