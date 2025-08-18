@@ -2,7 +2,7 @@ import bpy
 from ..evm import *
 import os
 from mathutils import Vector
-from ...tri.importer.tri import TRI
+from ...tri.tri import TRI
 from ...kms.importer.rotationWrapperObj import objRotationWrapper
 from ...util.util import getBoneName, expected_parent_bones
 import bmesh

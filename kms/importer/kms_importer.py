@@ -1,9 +1,10 @@
+from __future__ import annotations
 import bpy
 from ..kms import *
 import os
 from mathutils import Vector
-from ...tri.importer.tri import TRI
-from ...util.util import getBoneName, expected_parent_bones
+from ...ctxr.ctxr import CTXR, ctxr_lookup_path
+from ...util.util import getBoneName, expected_parent_bones, replaceExt
 from .rotationWrapperObj import objRotationWrapper
 import bmesh
 
@@ -38,7 +39,7 @@ def set_partent(parent, child):
     parent.select_set(False)
 
 
-def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_dir: str, hasHumanBones: bool):
+def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_dir: str, hasHumanBones: bool, texLoader: TextureLoad):
     print(f"Importing mesh {meshInd}, parent {mesh.parentInd}, pos {meshPos}")
     vertices = []
     normals = []
@@ -131,7 +132,7 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
         for i, x in enumerate(weights):
             parentGroup.add([i], 1 - x / 4096, "REPLACE")
     
-    if apply_materials(mesh, obj, extract_dir):
+    if apply_materials(mesh, obj, extract_dir, texLoader):
         bm = bmesh.new()
         bm.from_mesh(objmesh)
         uv_layer = bm.loops.layers.uv.new("UVMap1")
@@ -206,43 +207,57 @@ def construct_armature(kms: KMS, kmsName: str, hasHumanBones: bool):
     bpy.ops.object.mode_set(mode='OBJECT')
     return ob
 
-def fetch_textures(kms: KMS, kms_file: str) -> int:
-    tri_file = kms_file[:-4] + ".tri"
-    extract_dir = os.path.split(kms_file)[0]
-    extract_dir = os.path.join(extract_dir, "sealouse_extract")
-    if not os.path.exists(tri_file):
-        kms_dir, tri_name = os.path.split(tri_file)
-        kms_parent_dir, region = os.path.split(kms_dir)
-        asset_dir = os.path.split(kms_parent_dir)[0]
-        tri_file = os.path.join(asset_dir, "tri", region, tri_name)
-    if not os.path.exists(tri_file):
-        return -1
+
+class TextureLoad:
+    extract_dir: str
+    ctxr_dir: str | None  # ctxr load folder if using ctxr
+    ctxr_name_lookup: dict
+    overwrite_existing: bool
+
+    def __init__(self, extract_dir: str, ctxr_dir: str = None, overwrite_existing: bool = False):
+        self.extract_dir = extract_dir
+        self.ctxr_dir = ctxr_dir
+        self.ctxr_name_lookup = {}
+        self.overwrite_existing = overwrite_existing
+        if not ctxr_dir:
+            return
+        
+        with open(ctxr_lookup_path, "rt") as f:
+            for line in f.readlines():
+                tga_num = os.path.splitext(line.split()[1])[0]
+                self.ctxr_name_lookup[int(tga_num)] = line.split()[2]
     
-    tri = TRI()
-    with open(tri_file, "rb") as f:
-        tri.fromFile(f)
-    os.makedirs(extract_dir, exist_ok=True)
-    tri.dumpTextures(extract_dir)
-    return tri.header.numTexture
-
-def get_texture(extract_dir: str, mapID: int) -> bpy.types.Image | None:
-    if mapID == 0:
-        return None
-    mapName = "%d.tga" % mapID
-    #remapped = open("C:/Users/jackm/AppData/Roaming/Blender Foundation/Blender/3.6/scripts/addons/SeaLouse/tri/importer/ctxrmapping.txt", 'rt')
-    #for x in remapped.readlines():
-    #    if x.split()[1] == mapName:
-    #        mapName = x.split()[0]
-    #        break
-    if bpy.data.images.get(mapName) is not None:
+    def get_texture(self, mapID: int) -> bpy.types.Image | None:
+        if mapID == 0:
+            return None
+        mapName = f"{mapID}.tga"
+        if mapID in self.ctxr_name_lookup:
+            mapName = replaceExt(self.ctxr_name_lookup[mapID], "dds")
+        
+        if bpy.data.images.get(mapName) is not None:
+            return bpy.data.images.get(mapName)
+        
+        mapPath = os.path.join(self.extract_dir, mapName)
+        
+        if not os.path.exists(mapPath) or self.overwrite_existing:
+            if not self.ctxr_dir:
+                return None
+            # Load ctxr
+            ctxr_path = os.path.join(self.ctxr_dir, replaceExt(mapName, "ctxr"))
+            if not os.path.exists(ctxr_path):
+                return None
+            print("Extracting", ctxr_path, "to DDS")
+            ctxr = CTXR()
+            with open(ctxr_path, "rb") as f:
+                ctxr.fromFile(f)
+            dds = ctxr.convertDDS()
+            with open(mapPath, "wb") as f:
+                dds.writeToFile(f)
+        
+        bpy.data.images.load(mapPath)
         return bpy.data.images.get(mapName)
-    mapPath = os.path.join(extract_dir, mapName) # "ctxr",
-    if not os.path.exists(mapPath):
-        return None
-    bpy.data.images.load(mapPath)
-    return bpy.data.images.get(mapName)
 
-def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
+def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad):
     if mesh.numVertexGroup == 0:
         return False
     
@@ -268,7 +283,7 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
         principled.location = 900,0
         output_link = links.new( principled.outputs['BSDF'], output.inputs['Surface'] )
     
-        colorMap = get_texture(extract_dir, vertexGroup.colorMap)
+        colorMap = texLoader.get_texture(vertexGroup.colorMap)
         if colorMap is not None:
             color_image = nodes.new(type='ShaderNodeTexImage')
             color_image.location = 0,0
@@ -283,7 +298,7 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
         elif vertexGroup.colorMap > 0:
             material["colorMapFallback"] = vertexGroup.colorMap
         
-        specularMap = get_texture(extract_dir, vertexGroup.specularMap)
+        specularMap = texLoader.get_texture(vertexGroup.specularMap)
         if specularMap is not None:
             specular_image = nodes.new(type='ShaderNodeTexImage')
             specular_image.location = 0,-60
@@ -304,7 +319,7 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
         else:
             principled.inputs['Specular IOR Level'].default_value = 0.0
         
-        envMap = get_texture(extract_dir, vertexGroup.environmentMap)
+        envMap = texLoader.get_texture(vertexGroup.environmentMap)
         if envMap is not None:
             env_image = nodes.new(type='ShaderNodeTexImage')
             env_image.location = 0,-120
@@ -321,13 +336,13 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str):
         obj.data.materials.append(material)
     return True
 
-def main(kms_file: str, useTri: bool = True):
+def main(kms_file: str, ctxr_path: str = None, overwrite_existing: bool = False):
     kms = KMS()
     with open(kms_file, "rb") as f:
         kms.fromFile(f)
     
     
-    extract_dir, kmsname = os.path.split(kms_file) # Split only splits into head and tail, but since we want the last part, we don't need to split the head with kms_file.split(os.sep)
+    extract_dir, kmsname = os.path.split(kms_file)
     extract_dir = os.path.join(extract_dir, "sealouse_extract")
 
     kmsCollection = bpy.data.collections.get("KMS")
@@ -335,24 +350,21 @@ def main(kms_file: str, useTri: bool = True):
         kmsCollection = bpy.data.collections.new("KMS")
         bpy.context.scene.collection.children.link(kmsCollection)
 
-    collection_name = kmsname[:-4]
+    collection_name = os.path.splitext(kmsname)[0]
     if bpy.data.collections.get(collection_name): # oops, duplicate
         collection_suffix = 1
-        while True:
-            if not bpy.data.collections.get("%s.%03d" % (collection_name, collection_suffix)):
-                collection_name += ".%03d" % collection_suffix
-                break
+        while bpy.data.collections.get(f"{collection_name}.{collection_suffix:03}"):
             collection_suffix += 1
+        collection_name += f".{collection_suffix:03}"
     col = bpy.data.collections.new(collection_name)
     
     kmsCollection.children.link(col)
     #bpy.context.view_layer.active_layer_collection = bpy.context.view_layer.layer_collection.children[-1]
     
-    if useTri:
-        fetch_textures(kms, kms_file)
-    
     parentBoneList = [mesh.parentInd for mesh in kms.meshes]
     hasHumanBones = parentBoneList[:len(expected_parent_bones)] == expected_parent_bones
+    
+    texLoader = TextureLoad(extract_dir, ctxr_path, overwrite_existing)
     
     bMeshes = []
     for i, mesh in enumerate(kms.meshes):
@@ -363,7 +375,13 @@ def main(kms_file: str, useTri: bool = True):
         while curMesh.parent:
             curMesh = curMesh.parent
             meshPos += curMesh.pos
-        bMeshes.append(construct_mesh(mesh, col, i, tuple(meshPos.xyz()), extract_dir, hasHumanBones))
+        bMeshes.append(construct_mesh(mesh,
+                                      col,
+                                      i,
+                                      tuple(meshPos.xyz()),
+                                      extract_dir,
+                                      hasHumanBones,
+                                      texLoader))
     
     amt = construct_armature(kms, collection_name, hasHumanBones)
     for mesh in bMeshes:

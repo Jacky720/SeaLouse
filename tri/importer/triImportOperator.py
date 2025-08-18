@@ -1,7 +1,7 @@
 import bpy
 from bpy_extras.io_utils import ImportHelper
 import os
-from .tri import TRI
+from ..tri import TRI
 
 
 class ImportMgsTri(bpy.types.Operator, ImportHelper):
@@ -17,16 +17,16 @@ class ImportMgsTri(bpy.types.Operator, ImportHelper):
 
     def execute(self, context):
         if self.bulk_import:
-            filelist = [x for x in os.listdir(os.path.split(self.filepath)[0]) if x.endswith(".tri")]
+            filelist = [x for x in os.listdir(os.path.dirname(self.filepath)) if x.endswith(".tri")]
         else:
-            filelist = [os.path.split(self.filepath)[1]]
+            filelist = [os.path.basename(self.filepath)]
         
-        extract_dir = os.path.split(self.filepath)[0]
-        extract_dir = os.path.join(extract_dir, "sealouse_extract")
+        base_dir = os.path.dirname(self.filepath)
+        extract_dir = os.path.join(base_dir, "sealouse_extract")
         os.makedirs(extract_dir, exist_ok=True)
         
         for file in filelist:
-            filepath = os.path.join(os.path.split(self.filepath)[0], file)
+            filepath = os.path.join(base_dir, file)
             print("\n\nLoading", filepath)
             
             myTri = TRI()

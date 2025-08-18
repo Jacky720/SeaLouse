@@ -1,3 +1,4 @@
+import os
 
 kmsBoneNameArray = [
     # Tuples indicate a bone that we would prefer to map differently with MGR models (I like MGR)
@@ -100,3 +101,6 @@ def getVertWeight(vert) -> float:
     if len(vert.groups) == 2 and vert.groups[1].group == 0: # weights are in wrong order (may be impossible, handle anyway)
         return vert.groups[1].weight
     return 0.0 # vertex is only weighted to parent
+
+def replaceExt(path: str, new_ext: str) -> str:
+    return f"{os.path.splitext(path)[0]}.{new_ext}"
