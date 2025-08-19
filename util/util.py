@@ -95,11 +95,15 @@ def getBoneIndex(boneName: str, fingerIndex: int = 0):
 def getFingerIndex(boneNames: list[str]):
     return sum(1 if x in kmsBoneNames else 0 for x in boneNames)
 
-def getVertWeight(vert) -> float:
-    if vert.groups[0].group == 0: # weight is correct
-        return vert.groups[0].weight
-    if len(vert.groups) == 2 and vert.groups[1].group == 0: # weights are in wrong order (may be impossible, handle anyway)
-        return vert.groups[1].weight
+def getVertWeight(vert, obj = None, group_name: str = None) -> float:
+    group_index = 0
+    if obj and group_name and group_name in [group.name for group in obj.vertex_groups]:
+        group_index = obj.vertex_groups.values().index(obj.vertex_groups[group_name])
+    else:
+        print("fuck")
+    for group in vert.groups:
+        if group.group == group_index:
+            return group.weight
     return 0.0 # vertex is only weighted to parent
 
 def replaceExt(path: str, new_ext: str) -> str:

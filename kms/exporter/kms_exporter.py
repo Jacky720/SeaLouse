@@ -6,11 +6,27 @@ from ...ctxr.ctxr import DDS, ctxr_lookup_path
 import os
 from mathutils import Vector
 
-def getVertWeight(vert) -> int:
-    return int(rawVertWeight(vert) * 4096)
 
-def kmsVertFromVert(vert) -> KMSVertex:
-    return KMSVertex(round(vert.co.x), round(vert.co.y), round(vert.co.z), getVertWeight(vert))
+class MeshExportHelper:
+    obj: bpy.types.Object
+    mesh: bpy.types.Mesh
+    bone: bpy.types.Bone
+    
+    def __init__(self, obj: bpy.types.Object, bone: bpy.types.Bone):
+        self.obj = obj
+        if obj.type != 'MESH':
+            raise Exception(f"Invalid object {obj.name} with type {obj.type} passed to MeshExportHelper")
+        self.mesh = obj.data
+        self.bone = bone
+    
+    def getVertWeight(self, vert) -> int:
+        return int(rawVertWeight(vert, self.obj, self.bone.name) * 4096)
+    
+    def kmsVertFromVert(self, vert) -> KMSVertex:
+        return KMSVertex(round(vert.co.x), round(vert.co.y), round(vert.co.z), self.getVertWeight(vert))
+    
+    def kmsVertFromIndex(self, index) -> KMSVertex:
+        return self.kmsVertFromVert(self.mesh.vertices[index])
 
 def kmsNormFromLoop(loop, isFace: bool) -> KMSNormal:
     return KMSNormal(loop.normal.x * -4096, loop.normal.y * -4096, loop.normal.z * -4096, isFace)
@@ -64,7 +80,7 @@ class TextureSave:
             if len(principled.inputs[inputName].links) != 1:
                 return mapID
             fromNode = principled.inputs[inputName].links[0].from_node
-            if fromNode.bl_idname == 'ShaderNodeTexImage'
+            if fromNode.bl_idname == 'ShaderNodeTexImage':
                 matchImage = fromNode.image
             elif fromNode.bl_idname == 'ShaderNodeMath' and len(fromNode.inputs[0].links) == 1:
                 matchImage = fromNode.inputs[0].links[0].from_node.image
@@ -184,6 +200,7 @@ def main(kms_file: str, collection_name: str, ctxr_dir: str = None):
             kmsMesh.vertexGroups.append(vertexGroup)
         
         allVertsWritten: List[List[int]] = [[] for _ in range(len(kmsMesh.vertexGroups))]
+        helper = MeshExportHelper(obj, bone)
         flip = False
         for polygon in mesh.polygons:
             assert(polygon.loop_total == 3) # Not triangulated!
@@ -204,7 +221,7 @@ def main(kms_file: str, collection_name: str, ctxr_dir: str = None):
                vertexIndices[0] == vertsWritten[-2]:
                 # Optimize!
                 vertsWritten += [vertexIndices[compress_add_index]]
-                vertexGroup.vertices += [kmsVertFromVert(mesh.vertices[vertexIndices[compress_add_index]])]
+                vertexGroup.vertices += [helper.kmsVertFromIndex(vertexIndices[compress_add_index])]
                 vertexGroup.normals += [kmsNormFromLoop(mesh.loops[loopIndices[compress_add_index]], True)]
                 if vertexGroup.uvs is not None:
                     vertexGroup.uvs += [kmsUvFromLayerAndLoop(mesh, 0, loopIndices[compress_add_index])]
@@ -216,7 +233,7 @@ def main(kms_file: str, collection_name: str, ctxr_dir: str = None):
             else:
                 # add all three :(
                 vertsWritten += vertexIndices
-                vertexGroup.vertices += [kmsVertFromVert(mesh.vertices[vert]) for vert in vertexIndices]
+                vertexGroup.vertices += [helper.kmsVertFromIndex(vert) for vert in vertexIndices]
                 vertexGroup.normals += [
                     kmsNormFromLoop(mesh.loops[loopIndices[0]], False),
                     kmsNormFromLoop(mesh.loops[loopIndices[1]], False),

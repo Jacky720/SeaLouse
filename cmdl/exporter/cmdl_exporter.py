@@ -1,6 +1,6 @@
 import bpy
 from ..cmdl import *
-from ...util.util import getBoneIndex, getFingerIndex, getVertWeight
+from ...util.util import getBoneIndex, getFingerIndex, getVertWeight, getBoneName
 import os
 from mathutils import Vector
 
@@ -39,6 +39,8 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
 
     for mesh in meshes:
         prevVertexIndex = -1
+        meshIndex = int(mesh.name.split('Mesh')[1])
+        bone = bones.get(getBoneName(meshIndex)) or bones[meshIndex]
         # Accurate normals are attached to loops
         meshmesh = mesh.data
         if bpy.app.version < (4, 1):
@@ -51,7 +53,7 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
             if evmMode:
                 posSection.data.data.append((vertex.co.x/16, vertex.co.y/16, vertex.co.z/16, 1.0))
             else:
-                posSection.data.data.append((vertex.co.x, vertex.co.y, vertex.co.z, getVertWeight(vertex)))
+                posSection.data.data.append((vertex.co.x, vertex.co.y, vertex.co.z, getVertWeight(vertex, mesh, bone.name)))
             nrm = loop.normal
             nrmSection.data.data.append((-nrm.x, -nrm.y, -nrm.z))
 

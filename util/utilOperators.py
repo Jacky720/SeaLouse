@@ -1,6 +1,6 @@
 import bpy, bmesh
 from mathutils import Matrix
-from .util import mgrBoneMap, expected_parent_bones
+from .util import mgrBoneMap, expected_parent_bones, getBoneIndex, getBoneName
 
 class SimplifyMGRBones(bpy.types.Operator):
     """Remove "boneXXXX" vertex groups of active object"""
@@ -95,7 +95,7 @@ class SplitByWeightPairs(bpy.types.Operator):
                         continue
                     weight = weight_name_lookup[group.group]
                     #print(weight)
-                    if weight != ("bone%d" % i) and weight != ("bone%d" % expected_parent_bones[i]):
+                    if weight != getBoneName(i) and weight != getBoneName(expected_parent_bones[i]):
                         vert.select = False
                         vertCount -= 1
                         break
@@ -122,7 +122,7 @@ class SplitByWeightPairs(bpy.types.Operator):
                     for group in active_object.data.vertices[vert].groups:
                         if group.weight == 0.0:
                             continue
-                        groups.add(int(weight_name_lookup[group.group].split("bone")[1]))
+                        groups.add(getBoneIndex(weight_name_lookup[group.group]))
                 if max(groups) == i:
                     poly.select = True
                     foundAny = True
@@ -136,8 +136,19 @@ class SplitByWeightPairs(bpy.types.Operator):
         # Let's zero-index all of these
         bpy.ops.object.mode_set(mode='OBJECT')
         ogObjName = active_object.name
+        bones = active_object.parent.data.bones
         for i in range(21 + len(additionalMeshes)):
-            bpy.data.objects[ogObjName + ".%03d" % (i + 1)].name = ogObjName + ".%03d" % i
+            obj = bpy.data.objects[ogObjName + ".%03d" % (i + 1)]
+            obj.name = ogObjName + ".%03d" % i
+            # Clear unused materials while we're at it
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+            bpy.context.view_layer.objects.active = obj
+            for j in range(len(obj.material_slots), 0, -1):
+                if all(poly.material_index != (j-1) for poly in obj.data.polygons):
+                    obj.active_material_index = j - 1
+                    bpy.ops.object.material_slot_remove()
+            
         
         # We identify the meshes created in the second pass and merge them into the ones from the first pass
         for i, meshNum in enumerate(additionalMeshes):
@@ -151,7 +162,6 @@ class SplitByWeightPairs(bpy.types.Operator):
             bpy.ops.object.join()
             print("Joined %s to %s" % (ogObjName + ".%03d" % (21 + i), ogObjName + ".%03d" % meshNum))
         
-        bones = active_object.parent.data.bones
         
         # Correct mesh positions, thanks StackOverflow
         for meshNum in range(21):
