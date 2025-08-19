@@ -38,10 +38,11 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
             kms_importer.reset_blend()
         
         dirname, kms_name = os.path.split(self.filepath)
-        if self.texture_mode == 'tri':
+        if self.texture_mode != 'none':
             extract_path = os.path.join(dirname, "sealouse_extract")
+            os.makedirs(extract_path, exist_ok=True)
+        if self.texture_mode == 'tri':
             if os.path.isabs(self.texture_path):
-                extract_path = self.texture_path
                 tri_path = os.path.join(self.texture_path, replaceExt(kms_name, "tri"))
             else:
                 tri_path = os.path.join(dirname, self.texture_path, replaceExt(kms_name, "tri"))
@@ -50,7 +51,6 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
                 tri = TRI()
                 with open(tri_path, "rb") as f:
                     tri.fromFile(f)
-                os.makedirs(extract_path, exist_ok=True)
                 tri.dumpTextures(extract_path)
         
         if self.texture_mode == 'ctxr':
