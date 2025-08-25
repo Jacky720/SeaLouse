@@ -1,6 +1,8 @@
 import bpy
 from bpy_extras.io_utils import ImportHelper
 import os
+from ...util.util import replaceExt
+
 
 texture_modes = [
     ('none', 'No Textures', 'Do not load textures'),
