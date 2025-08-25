@@ -2,9 +2,10 @@ import bpy
 from ..evm import *
 import os
 from mathutils import Vector
+from math import radians
 from ...tri.tri import TRI
 from ...kms.importer.rotationWrapperObj import objRotationWrapper
-from ...kms.importer.kms_importer import TextureLoad, make_alpha_multiplier
+from ...kms.importer.kms_importer import TextureLoad, make_alpha_multiplier, make_specular_env_multiplier
 from ...util.util import getBoneName, expected_parent_bones
 import bmesh
 
@@ -253,24 +254,31 @@ def apply_materials(evm: EVM, obj, extract_dir: str, texLoader: TextureLoad):
         output_link = links.new( principled.outputs['BSDF'], output.inputs['Surface'] )
     
         colorMap = texLoader.get_texture(vertexGroup.colorMap)
+        colorMapName = texLoader.get_texture_nice_name(vertexGroup.colorMap)
+        isAlphaBlended = colorMap is not None and colorMapName.find("alp") >= 0 and colorMapName.find("ovl") >= 0
         if colorMap is not None:
             color_image = nodes.new(type='ShaderNodeTexImage')
             color_image.location = 0,0
             color_image.image = colorMap
             colorMap.colorspace_settings.name = 'sRGB'
-            #colorMap.alpha_mode = "NONE"
+            # If alpha output is disconnected, the RGB values will be multiplied by it 
+            # unless alpha_mode is set to "CHANNEL_PACKED"
+            colorMap.alpha_mode = "CHANNEL_PACKED"
             color_image.hide = True
             color_image.name = "g_ColorMap"
             color_image.label = "g_ColorMap"
             links.new(color_image.outputs['Color'], principled.inputs['Base Color'])
-            output_alpha = color_image.outputs['Alpha']
-            if texLoader.ctxr_dir:
-                output_alpha = make_alpha_multiplier(material.node_tree, color_image).outputs[0]
-            links.new(output_alpha, principled.inputs['Alpha'])
+            
+            if isAlphaBlended:
+                output_alpha = color_image.outputs['Alpha']
+                if texLoader.ctxr_dir:
+                    output_alpha = make_alpha_multiplier(material.node_tree, color_image).outputs[0]
+                links.new(output_alpha, principled.inputs['Alpha'])
         elif vertexGroup.colorMap > 0:
             material["colorMapFallback"] = vertexGroup.colorMap
         
         specularMap = texLoader.get_texture(vertexGroup.specularMap)
+        specularOut = None
         if specularMap is not None:
             specular_image = nodes.new(type='ShaderNodeTexImage')
             specular_image.location = 0,-60
@@ -279,13 +287,17 @@ def apply_materials(evm: EVM, obj, extract_dir: str, texLoader: TextureLoad):
             specular_image.hide = True
             specular_image.name = "g_SpecularMap"
             specular_image.label = "g_SpecularMap"
-            output_alpha = specular_image.outputs['Alpha']
+            specularOut = specular_image.outputs['Alpha']
+
             if texLoader.ctxr_dir:
-                output_alpha = make_alpha_multiplier(material.node_tree, specular_image).outputs[0]
+                specular_mul_node = make_alpha_multiplier(material.node_tree, specular_image)
+                specular_mul_node.name = "Specular Alpha Multiplier" 
+                specularOut = specular_mul_node.outputs[0]
+                
             if 'Specular' in principled.inputs:
-                links.new(output_alpha, principled.inputs['Specular'])
+                links.new(specularOut, principled.inputs['Specular'])
             else:
-                links.new(output_alpha, principled.inputs['Specular IOR Level'])
+                links.new(specularOut, principled.inputs['Specular IOR Level'])
         elif vertexGroup.specularMap > 0:
             material["specularMapFallback"] = vertexGroup.specularMap
         
@@ -296,18 +308,47 @@ def apply_materials(evm: EVM, obj, extract_dir: str, texLoader: TextureLoad):
         
         envMap = texLoader.get_texture(vertexGroup.environmentMap)
         if envMap is not None:
-            env_image = nodes.new(type='ShaderNodeTexImage')
+            # If alpha output is disconnected, the RGB values will be multiplied by it 
+            # unless alpha_mode is set to "CHANNEL_PACKED"
+            envMap.alpha_mode = "CHANNEL_PACKED"
+
+            env_uv = nodes.new(type='ShaderNodeTexCoord')
+            env_uv.location = -320,-120
+            env_uv.hide = True
+
+            env_mapping = nodes.new(type='ShaderNodeMapping')
+            env_mapping.location = -160,-120
+            env_mapping.inputs['Rotation'].default_value[2] = radians(90)
+            env_mapping.hide = True
+            
+            env_image = nodes.new(type='ShaderNodeTexEnvironment')
             env_image.location = 0,-120
             env_image.image = envMap
-            if envMap != colorMap:
-                envMap.colorspace_settings.name = 'Non-Color'
+            # Environment maps are supposed to contain colors
+            # if envMap != colorMap: 
+            #     envMap.colorspace_settings.name = 'Non-Color'
             env_image.hide = True
             env_image.name = "g_EnvironmentMap"
             env_image.label = "g_EnvironmentMap"
-            output_alpha = env_image.outputs['Alpha']
-            if texLoader.ctxr_dir:
-                output_alpha = make_alpha_multiplier(material.node_tree, env_image).outputs[0]
-            links.new(output_alpha, principled.inputs['Metallic'])
+            output_color = env_image.outputs['Color']
+
+            links.new(env_uv.outputs['Reflection'], env_mapping.inputs['Vector'])
+            links.new(env_mapping.outputs['Vector'], env_image.inputs['Vector'])
+            
+            # Truer to the PS2 look, environment maps are rendered as an additive pass
+            
+            if specularMap is not None:
+                env_mul = make_specular_env_multiplier(material.node_tree,env_image,specularOut)
+                links.new(env_mul.outputs['Result'], principled.inputs['Emission Color'])
+            else:
+                links.new(output_color, principled.inputs['Emission Color'])
+                
+            principled.inputs['Emission Strength'].default_value = 1.0
+            
+            # output_alpha = env_image.outputs['Alpha']
+            # if texLoader.ctxr_dir:
+            #     output_alpha = make_alpha_multiplier(material.node_tree, env_image).outputs[0]
+            # links.new(output_alpha, principled.inputs['Metallic'])
         elif vertexGroup.environmentMap > 0:
             material["environmentMapFallback"] = vertexGroup.environmentMap
         
