@@ -220,9 +220,8 @@ class TextureLoad:
         self.ctxr_dir = ctxr_dir
         self.ctxr_name_lookup = {}
         self.overwrite_existing = overwrite_existing
-        if not ctxr_dir:
-            return
-        
+
+        # Load dictionary regardless, we'll use it to guess texture blending modes
         with open(ctxr_lookup_path, "rt") as f:
             for line in f.readlines():
                 tga_num = os.path.splitext(line.split()[1])[0]
@@ -257,6 +256,14 @@ class TextureLoad:
         
         bpy.data.images.load(mapPath)
         return bpy.data.images.get(mapName)
+    
+    def get_texture_nice_name(self, mapID: int):
+        if mapID == 0:
+            return ""
+        mapName = f"{mapID}.tga"
+        if mapID in self.ctxr_name_lookup:
+            mapName = self.ctxr_name_lookup[mapID]
+        return mapName
 
 def make_alpha_multiplier(node_tree, image_node):
     nodes = node_tree.nodes
@@ -270,7 +277,7 @@ def make_alpha_multiplier(node_tree, image_node):
     alpha_multiplier.hide = True
     return alpha_multiplier
 
-def make_specular_env_multiplier(node_tree, env_node, specular_node):
+def make_specular_env_multiplier(node_tree, env_node, specular_output):
     nodes = node_tree.nodes
     links = node_tree.links
     env_multiplier = nodes.new(type='ShaderNodeMix')
@@ -282,7 +289,7 @@ def make_specular_env_multiplier(node_tree, env_node, specular_node):
     env_multiplier.data_type = "RGBA"
     env_multiplier.blend_type = 'MULTIPLY'
     env_multiplier.inputs['Factor'].default_value = 1.0
-    links.new(specular_node.outputs[0], env_multiplier.inputs['A'])
+    links.new(specular_output, env_multiplier.inputs['A'])
     links.new(env_node.outputs['Color'], env_multiplier.inputs['B'])
     return env_multiplier
 
@@ -311,8 +318,10 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad
         principled = nodes.new(type='ShaderNodeBsdfPrincipled')
         principled.location = 900,0
         output_link = links.new( principled.outputs['BSDF'], output.inputs['Surface'] )
+
         colorMap = texLoader.get_texture(vertexGroup.colorMap)
-        isAlphaBlended = colorMap is not None and colorMap.name.find("alp") >= 0 and colorMap.name.find("ovl") >= 0
+        colorMapName = texLoader.get_texture_nice_name(vertexGroup.colorMap)
+        isAlphaBlended = colorMap is not None and colorMapName.find("alp") >= 0 and colorMapName.find("ovl") >= 0
         if colorMap is not None:
             color_image = nodes.new(type='ShaderNodeTexImage')
             color_image.location = 0,0
@@ -336,6 +345,7 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad
             material["colorMapFallback"] = vertexGroup.colorMap
         
         specularMap = texLoader.get_texture(vertexGroup.specularMap)
+        specularOut = None
         if specularMap is not None:
             specular_image = nodes.new(type='ShaderNodeTexImage')
             specular_image.location = 0,-60
@@ -344,13 +354,17 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad
             specular_image.hide = True
             specular_image.name = "g_SpecularMap"
             specular_image.label = "g_SpecularMap"
-            output_alpha = specular_image.outputs['Alpha']
+            specularOut = specular_image.outputs['Alpha']
+
             if texLoader.ctxr_dir:
-                output_alpha = make_alpha_multiplier(material.node_tree, specular_image).outputs[0]
+                specular_mul_node = make_alpha_multiplier(material.node_tree, specular_image)
+                specular_mul_node.name = "Specular Alpha Multiplier" 
+                specularOut = specular_mul_node.outputs[0]
+                
             if 'Specular' in principled.inputs:
-                links.new(output_alpha, principled.inputs['Specular'])
+                links.new(specularOut, principled.inputs['Specular'])
             else:
-                links.new(output_alpha, principled.inputs['Specular IOR Level'])
+                links.new(specularOut, principled.inputs['Specular IOR Level'])
         elif vertexGroup.specularMap > 0:
             material["specularMapFallback"] = vertexGroup.specularMap
         
@@ -391,8 +405,7 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad
             # Truer to the PS2 look, environment maps are rendered as an additive pass
             
             if specularMap is not None:
-                specular_mul = nodes['Specular Alpha Multiplier']
-                env_mul = make_specular_env_multiplier(material.node_tree,env_image,specular_mul)
+                env_mul = make_specular_env_multiplier(material.node_tree,env_image, specularOut)
                 links.new(env_mul.outputs['Result'], principled.inputs['Emission Color'])
             else:
                 links.new(output_color, principled.inputs['Emission Color'])
