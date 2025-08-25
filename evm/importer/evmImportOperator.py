@@ -29,37 +29,53 @@ class ImportMgsEvm(bpy.types.Operator, ImportHelper):
     texture_path: bpy.props.StringProperty(name="Load Path:")
     texture_overwrite: bpy.props.BoolProperty(name="Re-extract existing", default=False)
 
+    files: bpy.props.CollectionProperty(
+        name="EVM files",
+        type=bpy.types.OperatorFileListElement,
+        options={"HIDDEN","SKIP_SAVE"},
+    )
+
+    directory: bpy.props.StringProperty(
+        subtype='DIR_PATH',
+    )
+
+
     def execute(self, context):
-        print("Loading", self.filepath, "with textures", self.texture_mode)
         from . import evm_importer
         from ...tri.tri import TRI
         if self.reset_blend:
             evm_importer.reset_blend()
-        
-        dirname, kms_name = os.path.split(self.filepath)
-        if self.texture_mode != 'none':
-            extract_path = os.path.join(dirname, "sealouse_extract")
-            os.makedirs(extract_path, exist_ok=True)
-        if self.texture_mode == 'tri':
-            if os.path.isabs(self.texture_path):
-                tri_path = os.path.join(self.texture_path, replaceExt(kms_name, "tri"))
+
+        for file in self.files:
+            evm_path = os.path.join(self.directory, file.name)
+    
+            print("Loading", evm_path, "with textures", self.texture_mode)
+            dirname, kms_name = os.path.split(evm_path)
+            if self.texture_mode != 'none':
+                extract_path = os.path.join(dirname, "sealouse_extract")
+                os.makedirs(extract_path, exist_ok=True)
+            if self.texture_mode == 'tri':
+                if os.path.isabs(self.texture_path):
+                    tri_path = os.path.join(self.texture_path, replaceExt(kms_name, "tri"))
+                else:
+                    tri_path = os.path.join(dirname, self.texture_path, replaceExt(kms_name, "tri"))
+    
+                if os.path.exists(tri_path):
+                    tri = TRI()
+                    with open(tri_path, "rb") as f:
+                        tri.fromFile(f)
+                    tri.dumpTextures(extract_path)
+    
+            if self.texture_mode == 'ctxr':
+                # Unless you want to unpack every ctxr in advance, this has to be in the kms loader.
+                if os.path.isabs(self.texture_path):
+                    evm_importer.main(evm_path, self.texture_path, self.texture_overwrite)
+                else:
+                    evm_importer.main(evm_path, os.path.join(dirname, self.texture_path), self.texture_overwrite)
             else:
-                tri_path = os.path.join(dirname, self.texture_path, replaceExt(kms_name, "tri"))
+                evm_importer.main(evm_path)
             
-            if os.path.exists(tri_path):
-                tri = TRI()
-                with open(tri_path, "rb") as f:
-                    tri.fromFile(f)
-                tri.dumpTextures(extract_path)
-        
-        if self.texture_mode == 'ctxr':
-            # Unless you want to unpack every ctxr in advance, this has to be in the kms loader.
-            if os.path.isabs(self.texture_path):
-                return evm_importer.main(self.filepath, self.texture_path, self.texture_overwrite)
-            else:
-                return evm_importer.main(self.filepath, os.path.join(dirname, self.texture_path), self.texture_overwrite)
-        else:
-            return evm_importer.main(self.filepath)
+        return {'FINISHED'}
         
     def draw(self, context):
         layout = self.layout

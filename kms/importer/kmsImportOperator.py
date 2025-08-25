@@ -29,39 +29,56 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
     texture_mode: bpy.props.EnumProperty(name="Textures", items=texture_modes, default=0, update=changeTextureMode)
     texture_path: bpy.props.StringProperty(name="Load Path:")
     texture_overwrite: bpy.props.BoolProperty(name="Re-extract existing", default=False)
+    
+    files: bpy.props.CollectionProperty(
+        name="KMS files",
+        type=bpy.types.OperatorFileListElement, 
+        options={"HIDDEN","SKIP_SAVE"},
+    )
 
+    directory: bpy.props.StringProperty(
+        subtype='DIR_PATH',
+    )
+    
+        
     def execute(self, context):
-        print("Loading", self.filepath, "with textures", self.texture_mode)
         from . import kms_importer
         from ...tri.tri import TRI
         if self.reset_blend:
             kms_importer.reset_blend()
-        
-        dirname, kms_name = os.path.split(self.filepath)
-        if self.texture_mode != 'none':
-            extract_path = os.path.join(dirname, "sealouse_extract")
-            os.makedirs(extract_path, exist_ok=True)
-        if self.texture_mode == 'tri':
-            if os.path.isabs(self.texture_path):
-                tri_path = os.path.join(self.texture_path, replaceExt(kms_name, "tri"))
-            else:
-                tri_path = os.path.join(dirname, self.texture_path, replaceExt(kms_name, "tri"))
+
+
+        for file in self.files:
+            kms_path = os.path.join(self.directory, file.name)
+            print("Loading", kms_path, "with textures", self.texture_mode)
             
-            if os.path.exists(tri_path):
-                tri = TRI()
-                with open(tri_path, "rb") as f:
-                    tri.fromFile(f)
-                tri.dumpTextures(extract_path)
-        
-        if self.texture_mode == 'ctxr':
-            # Unless you want to unpack every ctxr in advance, this has to be in the kms loader.
-            if os.path.isabs(self.texture_path):
-                return kms_importer.main(self.filepath, self.texture_path, self.texture_overwrite)
+            dirname, kms_name = os.path.split(kms_path)
+            if self.texture_mode != 'none':
+                extract_path = os.path.join(dirname, "sealouse_extract")
+                os.makedirs(extract_path, exist_ok=True)
+            if self.texture_mode == 'tri':
+                if os.path.isabs(self.texture_path):
+                    tri_path = os.path.join(self.texture_path, replaceExt(kms_name, "tri"))
+                else:
+                    tri_path = os.path.join(dirname, self.texture_path, replaceExt(kms_name, "tri"))
+                
+                if os.path.exists(tri_path):
+                    tri = TRI()
+                    with open(tri_path, "rb") as f:
+                        tri.fromFile(f)
+                    tri.dumpTextures(extract_path)
+            
+            if self.texture_mode == 'ctxr':
+                # Unless you want to unpack every ctxr in advance, this has to be in the kms loader.
+                if os.path.isabs(self.texture_path):
+                    kms_importer.main(kms_path, self.texture_path, self.texture_overwrite)
+                else:
+                    kms_importer.main(kms_path, os.path.join(dirname, self.texture_path), self.texture_overwrite)
             else:
-                return kms_importer.main(self.filepath, os.path.join(dirname, self.texture_path), self.texture_overwrite)
-        else:
-            return kms_importer.main(self.filepath)
-        
+                kms_importer.main(kms_path)
+                
+        return {'FINISHED'}
+
     def draw(self, context):
         layout = self.layout
         col = layout.column()
@@ -71,3 +88,4 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
             col.prop(self, "texture_path")
         if self.texture_mode == 'ctxr':
             col.prop(self, "texture_overwrite")
+    
