@@ -228,11 +228,11 @@ class TextureLoad:
                 self.ctxr_name_lookup[int(tga_num)] = line.split()[2]
     
     def get_texture(self, mapID: int) -> bpy.types.Image | None:
-        if mapID == 0:
+        mapName = self.get_texture_nice_name(mapID)
+        if mapName == "":
             return None
-        mapName = f"{mapID}.tga"
-        if mapID in self.ctxr_name_lookup:
-            mapName = replaceExt(self.ctxr_name_lookup[mapID], "dds")
+        if mapName.endswith(".png"):
+            mapName = replaceExt(mapName, "dds")
         
         if bpy.data.images.get(mapName) is not None:
             return bpy.data.images.get(mapName)
@@ -265,11 +265,12 @@ class TextureLoad:
             mapName = self.ctxr_name_lookup[mapID]
         return mapName
 
-def make_alpha_multiplier(node_tree, image_node):
+def make_alpha_multiplier(node_tree, image_node, name: str = 'Multiply Alpha'):
     nodes = node_tree.nodes
     links = node_tree.links
     alpha_multiplier = nodes.new(type='ShaderNodeMath')
-    alpha_multiplier.label = 'Multiply Alpha'
+    alpha_multiplier.label = name
+    alpha_multiplier.name = name
     alpha_multiplier.location = (image_node.location[0] + 300, image_node.location[1])
     alpha_multiplier.operation = 'MULTIPLY'
     alpha_multiplier.inputs[1].default_value = 2.0
@@ -289,8 +290,8 @@ def make_specular_env_multiplier(node_tree, env_node, specular_output):
     env_multiplier.data_type = "RGBA"
     env_multiplier.blend_type = 'MULTIPLY'
     env_multiplier.inputs['Factor'].default_value = 1.0
-    links.new(specular_output, env_multiplier.inputs['A'])
-    links.new(env_node.outputs['Color'], env_multiplier.inputs['B'])
+    links.new(specular_output, env_multiplier.inputs[6])  # 'A'
+    links.new(env_node.outputs['Color'], env_multiplier.inputs[7])  # 'B'
     return env_multiplier
 
 def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad):
@@ -357,8 +358,7 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad
             specularOut = specular_image.outputs['Alpha']
 
             if texLoader.ctxr_dir:
-                specular_mul_node = make_alpha_multiplier(material.node_tree, specular_image)
-                specular_mul_node.name = "Specular Alpha Multiplier" 
+                specular_mul_node = make_alpha_multiplier(material.node_tree, specular_image, "Specular Alpha Multiplier")
                 specularOut = specular_mul_node.outputs[0]
                 
             if 'Specular' in principled.inputs:
@@ -397,7 +397,7 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad
             env_image.hide = True
             env_image.name = "g_EnvironmentMap"
             env_image.label = "g_EnvironmentMap"
-            output_color = env_image.outputs['Color']
+            environmentOut = env_image.outputs['Color']
             
             links.new(env_uv.outputs['Reflection'], env_mapping.inputs['Vector'])
             links.new(env_mapping.outputs['Vector'], env_image.inputs['Vector'])
@@ -406,9 +406,12 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad
             
             if specularMap is not None:
                 env_mul = make_specular_env_multiplier(material.node_tree,env_image, specularOut)
-                links.new(env_mul.outputs['Result'], principled.inputs['Emission Color'])
+                environmentOut = env_mul.outputs[2]  # Color Result
+            
+            if 'Emission Color' in principled.inputs:
+                links.new(environmentOut, principled.inputs['Emission Color'])
             else:
-                links.new(output_color, principled.inputs['Emission Color'])
+                links.new(environmentOut, principled.inputs['Emission'])
             
             
             principled.inputs['Emission Strength'].default_value = 1.0

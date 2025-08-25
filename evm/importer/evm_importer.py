@@ -290,8 +290,7 @@ def apply_materials(evm: EVM, obj, extract_dir: str, texLoader: TextureLoad):
             specularOut = specular_image.outputs['Alpha']
 
             if texLoader.ctxr_dir:
-                specular_mul_node = make_alpha_multiplier(material.node_tree, specular_image)
-                specular_mul_node.name = "Specular Alpha Multiplier" 
+                specular_mul_node = make_alpha_multiplier(material.node_tree, specular_image, "Specular Alpha Multiplier")
                 specularOut = specular_mul_node.outputs[0]
                 
             if 'Specular' in principled.inputs:
@@ -330,7 +329,7 @@ def apply_materials(evm: EVM, obj, extract_dir: str, texLoader: TextureLoad):
             env_image.hide = True
             env_image.name = "g_EnvironmentMap"
             env_image.label = "g_EnvironmentMap"
-            output_color = env_image.outputs['Color']
+            environmentOut = env_image.outputs['Color']
 
             links.new(env_uv.outputs['Reflection'], env_mapping.inputs['Vector'])
             links.new(env_mapping.outputs['Vector'], env_image.inputs['Vector'])
@@ -339,9 +338,12 @@ def apply_materials(evm: EVM, obj, extract_dir: str, texLoader: TextureLoad):
             
             if specularMap is not None:
                 env_mul = make_specular_env_multiplier(material.node_tree,env_image,specularOut)
-                links.new(env_mul.outputs['Result'], principled.inputs['Emission Color'])
+                environmentOut = env_mul.outputs[2]  # Color Result
+            
+            if 'Emission Color' in principled.inputs:
+                links.new(environmentOut, principled.inputs['Emission Color'])
             else:
-                links.new(output_color, principled.inputs['Emission Color'])
+                links.new(environmentOut, principled.inputs['Emission'])
                 
             principled.inputs['Emission Strength'].default_value = 1.0
             
