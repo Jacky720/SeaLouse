@@ -318,7 +318,7 @@ class TextureSave:
             with open(image.filepath_from_user(), "rb") as f:
                 dds = DDS().fromFile(f)
             ctxr = dds.convertCTXR()
-            if "_ovl_sub_alp.bmp" in ctxr_name:
+            if "ovl" in ctxr_name and "alp" in ctxr_name:
                 # Specular maps/transparent textures need different parameters
                 ctxr.header.unknown4 = [0, 0, 0, 2, 2, 2, 0, 2, 2, 2, 0x68, 0xff, 0xff, 0, 0, 0, 0, 0]
             with open(os.path.join(extract_dir, ctxr_name), "wb") as f:

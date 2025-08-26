@@ -2,7 +2,6 @@ import bpy
 from ..evm import *
 import os
 from mathutils import Vector
-from math import radians
 from ...kms.importer.rotationWrapperObj import objRotationWrapper
 from ...util.util import getBoneName, expected_parent_bones
 from ...util.materials import TextureLoad
