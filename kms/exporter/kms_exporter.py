@@ -73,7 +73,10 @@ class TextureSave:
                 else:
                     inputName = "Specular IOR Level"
             elif mapType == 'environmentMap':
-                inputName = "Metallic"
+                if "Emission" in principled.inputs:
+                    inputName = "Emission"
+                else:
+                    inputName = "Emission Color"
             else:
                 return mapID
             
@@ -84,6 +87,13 @@ class TextureSave:
                 matchImage = fromNode.image
             elif fromNode.bl_idname == 'ShaderNodeMath' and len(fromNode.inputs[0].links) == 1:
                 matchImage = fromNode.inputs[0].links[0].from_node.image
+            elif fromNode.bl_idname == 'ShaderNodeMix' and len(fromNode.inputs[7].links) == 1 and \
+              fromNode.inputs[7].links[0].from_node.bl_idname == 'ShaderNodeTexImage':
+                matchImage = fromNode.inputs[7].links[0].from_node.image
+                # Also consider swapping A and B inputs (very unlikely, but not hard to cover our bases)
+            elif fromNode.bl_idname == 'ShaderNodeMix' and len(fromNode.inputs[6].links) == 1 and \
+              fromNode.inputs[6].links[0].from_node.bl_idname == 'ShaderNodeTexImage':
+                matchImage = fromNode.inputs[6].links[0].from_node.image
             else:
                 return mapID
         
