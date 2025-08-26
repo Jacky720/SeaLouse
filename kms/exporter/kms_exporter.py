@@ -1,10 +1,8 @@
 import bpy
 from ..kms import *
-from ...util.util import getBoneName, getBoneIndex, replaceExt
+from ...util.util import getBoneName, getBoneIndex
 from ...util.util import getVertWeight as rawVertWeight
-from ...ctxr.ctxr import DDS, ctxr_lookup_path
-import os
-from mathutils import Vector
+from ...util.materials import TextureSave
 
 
 class MeshExportHelper:
@@ -35,96 +33,6 @@ def kmsUvFromLayerAndLoop(mesh, uvLayer: int, loopIndex: int) -> KMSUv:
     uv = mesh.uv_layers[uvLayer].uv[loopIndex].vector
     return KMSUv(uv.x * 4096, (1 - uv.y) * 4096)
 
-
-class TextureSave:
-    ctxr_id_lookup: dict
-    textures_to_save: set[bpy.types.Image]
-
-    def __init__(self):
-        self.ctxr_id_lookup = {}
-        self.textures_to_save = set()
-        
-        with open(ctxr_lookup_path, "rt") as f:
-            for line in f.readlines():
-                tga_num = os.path.splitext(line.split()[1])[0]
-                self.ctxr_id_lookup[line.split()[2]] = int(tga_num)
-    
-    def get_map(self, mat: bpy.types.Material, mapType: str) -> int:
-        nodes = mat.node_tree.nodes
-        mapType = mapType.lower()
-        if "map" not in mapType:
-            mapType += "Map"
-        mapType = mapType.replace("map", "Map")
-        
-        mapID = 0
-        matchImage = None
-        
-        if nodes.get(f"g_{mapType.capitalize()}") is not None:
-            matchImage = nodes[f"g_{mapType.capitalize()}"].image
-        elif mat.get(f"{mapType}Fallback") is not None:
-            mapID = mat[f"{mapType}Fallback"]
-        if not matchImage and "Principled BSDF" in nodes:  # Check anything
-            principled = nodes["Principled BSDF"]
-            if mapType == 'colorMap':
-                inputName = "Base Color"
-            elif mapType == 'specularMap':
-                if "Specular" in principled.inputs:
-                    inputName = "Specular"
-                else:
-                    inputName = "Specular IOR Level"
-            elif mapType == 'environmentMap':
-                if "Emission" in principled.inputs:
-                    inputName = "Emission"
-                else:
-                    inputName = "Emission Color"
-            else:
-                return mapID
-            
-            if len(principled.inputs[inputName].links) != 1:
-                return mapID
-            fromNode = principled.inputs[inputName].links[0].from_node
-            if fromNode.bl_idname == 'ShaderNodeTexImage':
-                matchImage = fromNode.image
-            elif fromNode.bl_idname == 'ShaderNodeMath' and len(fromNode.inputs[0].links) == 1:
-                matchImage = fromNode.inputs[0].links[0].from_node.image
-            elif fromNode.bl_idname == 'ShaderNodeMix' and len(fromNode.inputs[7].links) == 1 and \
-              fromNode.inputs[7].links[0].from_node.bl_idname == 'ShaderNodeTexImage':
-                matchImage = fromNode.inputs[7].links[0].from_node.image
-                # Also consider swapping A and B inputs (very unlikely, but not hard to cover our bases)
-            elif fromNode.bl_idname == 'ShaderNodeMix' and len(fromNode.inputs[6].links) == 1 and \
-              fromNode.inputs[6].links[0].from_node.bl_idname == 'ShaderNodeTexImage':
-                matchImage = fromNode.inputs[6].links[0].from_node.image
-            else:
-                return mapID
-        
-        if matchImage is not None:
-            matchImageName, matchImageExt = os.path.splitext(matchImage.name)
-            # TGA detection takes priority over fallback ID
-            if matchImageName.isnumeric() and matchImageExt == ".tga":
-                mapID = int(matchImageName)
-            elif matchImageExt == ".dds" and matchImageName + ".png" in self.ctxr_id_lookup:
-                self.textures_to_save.add(matchImage)
-                # DDS detection does not have priority over fallback ID
-                if not mapID:
-                    mapID = self.ctxr_id_lookup[matchImageName + ".png"]
-        
-        return mapID
-    
-    def save_textures(self, extract_dir: str):
-        for image in self.textures_to_save:
-            ctxr_name = replaceExt(image.name, "ctxr")
-            print("Packing image", ctxr_name)
-            if not os.path.exists(image.filepath_from_user()):
-                print("Error: Could not locate image on disk, skipping.")
-                continue
-            with open(image.filepath_from_user(), "rb") as f:
-                dds = DDS().fromFile(f)
-            ctxr = dds.convertCTXR()
-            if "_ovl_sub_alp.bmp" in ctxr_name:
-                # Specular maps/transparent textures need different parameters
-                ctxr.header.unknown4 = [0, 0, 0, 2, 2, 2, 0, 2, 2, 2, 0x68, 0xff, 0xff, 0, 0, 0, 0, 0]
-            with open(os.path.join(extract_dir, ctxr_name), "wb") as f:
-                ctxr.writeToFile(f)
 
 def main(kms_file: str, collection_name: str, ctxr_dir: str = None):
     kms = KMS()
