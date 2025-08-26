@@ -108,3 +108,15 @@ def getVertWeight(vert, obj = None, group_name: str = None) -> float:
 
 def replaceExt(path: str, new_ext: str) -> str:
     return f"{os.path.splitext(path)[0]}.{new_ext}"
+
+def stripExt(path: str) -> str:
+    return os.path.splitext(path)[0]
+
+def stripAllExt(path:str) -> str:
+    p, ext = os.path.splitext(path)
+
+    if len(ext) > 0:
+        return stripAllExt(p)
+
+    return p
+    

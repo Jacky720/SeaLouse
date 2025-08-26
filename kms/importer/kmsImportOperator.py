@@ -29,6 +29,7 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
     texture_mode: bpy.props.EnumProperty(name="Textures", items=texture_modes, default=0, update=changeTextureMode)
     texture_path: bpy.props.StringProperty(name="Load Path:")
     texture_overwrite: bpy.props.BoolProperty(name="Re-extract existing", default=False)
+    merge_material_slots: bpy.props.BoolProperty(name="Merge Similar Material Slots", default=True)
     
     files: bpy.props.CollectionProperty(
         name="KMS files",
@@ -71,11 +72,11 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
             if self.texture_mode == 'ctxr':
                 # Unless you want to unpack every ctxr in advance, this has to be in the kms loader.
                 if os.path.isabs(self.texture_path):
-                    kms_importer.main(kms_path, self.texture_path, self.texture_overwrite)
+                    kms_importer.main(kms_path, self.texture_path, self.texture_overwrite, self.merge_material_slots)
                 else:
-                    kms_importer.main(kms_path, os.path.join(dirname, self.texture_path), self.texture_overwrite)
+                    kms_importer.main(kms_path, os.path.join(dirname, self.texture_path), self.texture_overwrite, self.merge_material_slots)
             else:
-                kms_importer.main(kms_path)
+                kms_importer.main(kms_path, merge_material_slots = self.merge_material_slots)
                 
         return {'FINISHED'}
 
@@ -88,4 +89,6 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
             col.prop(self, "texture_path")
         if self.texture_mode == 'ctxr':
             col.prop(self, "texture_overwrite")
+        col.prop(self, "merge_material_slots")
+    
     
