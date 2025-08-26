@@ -1,9 +1,7 @@
 import bpy
 from ..evm import *
 from ...util.util import getBoneIndex, getFingerIndex
-from ...kms.exporter.kms_exporter import TextureSave
-import os
-from mathutils import Vector
+from ...util.materials import TextureSave
 
 
 def vertCoordCheck(vert1: EVMVertex, vert2: EVMVertex):
