@@ -119,7 +119,7 @@ class TextureLoad:
         nodes = matHelper.nodes
         links = matHelper.links
         # Render properties
-        material.blend_method = 'HASHED'
+        material.blend_method = 'OPAQUE'
         material.use_backface_culling = True
         # PrincipledBSDF and Ouput Shader
         output = nodes.new(type='ShaderNodeOutputMaterial')
@@ -145,6 +145,7 @@ class TextureLoad:
             links.new(color_image.outputs['Color'], principled.inputs['Base Color'])
             
             if isAlphaBlended:
+                material.blend_method = 'BLEND'
                 output_alpha = color_image.outputs['Alpha']
                 if self.ctxr_dir:
                     output_alpha = matHelper.make_alpha_multiplier(color_image).outputs[0]

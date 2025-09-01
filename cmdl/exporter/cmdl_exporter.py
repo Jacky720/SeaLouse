@@ -39,8 +39,9 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
 
     for mesh in meshes:
         prevVertexIndex = -1
-        meshIndex = int(mesh.name.split('Mesh')[1])
-        bone = bones.get(getBoneName(meshIndex)) or bones[meshIndex]
+        if not evmMode:
+            meshIndex = int(mesh.name.split('Mesh')[1])
+            bone = bones.get(getBoneName(meshIndex)) or bones[meshIndex]
         # Accurate normals are attached to loops
         meshmesh = mesh.data
         if bpy.app.version < (4, 1):
