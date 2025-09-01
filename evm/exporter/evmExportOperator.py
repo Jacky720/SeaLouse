@@ -48,7 +48,7 @@ class ExportMgsEvm(bpy.types.Operator, ExportHelper):
             cmdl_path = os.path.join(win_folder, cmdl_basename)
             print("Saving", cmdl_path)
             
-            cmdl_exporter.main(cmdl_path, colName, False, self.big_cmdl)
+            cmdl_exporter.main(cmdl_path, colName, True, self.big_cmdl)
             print('CMDL COMPLETE :)')
         
         return {'FINISHED'}
