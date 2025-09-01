@@ -1,4 +1,5 @@
 import bpy
+from bpy import props
 from bpy_extras.io_utils import ExportHelper
 import os
 
@@ -9,14 +10,27 @@ class ExportMgsKms(bpy.types.Operator, ExportHelper):
     bl_label = "Export KMS Data"
     bl_options = {'PRESET'}
     filename_ext = ".kms"
-    filter_glob: bpy.props.StringProperty(default="*.kms", options={'HIDDEN'})
+    filter_glob: props.StringProperty(default="*.kms", options={'HIDDEN'})
 
-    make_cmdl: bpy.props.BoolProperty(name="Generate CMDL supplement", default=True)
-    big_cmdl: bpy.props.BoolProperty(name="Split CMDL faces (DO NOT)", default=False)
-    cmdl_path: bpy.props.StringProperty(name="CMDL Path:", default="_win/")
-    pack_textures: bpy.props.BoolProperty(name="Repack CTXR textures", default=False)
-    tex_path: bpy.props.StringProperty(name="CTXR Path:", default="../../../textures/flatlist/ovr_stm/_win/")
+    make_cmdl: props.BoolProperty(name="Generate CMDL supplement", default=True)
+    big_cmdl: props.BoolProperty(name="Split CMDL faces (DO NOT)", default=False)
+    cmdl_path: props.StringProperty(name="CMDL Path:", default="_win/")
+    pack_textures: props.BoolProperty(name="Repack CTXR textures", default=False)
+    tex_path: props.StringProperty(name="CTXR Path:", default="../../../textures/flatlist/ovr_stm/_win/")
+    
+    # Override to set default file name
+    def invoke(self, context, _event):
+        if not self.filepath:
+            if bpy.data.collections.get("EVM") and bpy.data.collections["EVM"].children:
+                blend_filepath = bpy.data.collections["EVM"].children[0].name
+            else:
+                blend_filepath = "untitled"
 
+            self.filepath = blend_filepath + self.filename_ext
+
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+    
     def execute(self, context):
         from . import kms_exporter
         if not bpy.data.collections.get("KMS") or len(bpy.data.collections["KMS"].children) == 0:
