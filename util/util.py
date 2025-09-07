@@ -76,7 +76,7 @@ evmFingerArray = [
 evmFingerArray = [x + "_R" for x in evmFingerArray] + [x + "_L" for x in evmFingerArray]
 
 def getBoneName(boneIndex: int, fingerIndex: int = -1):
-    if fingerIndex >= 0 and boneIndex >= fingerIndex:
+    if fingerIndex >= 0 and fingerIndex <= boneIndex < fingerIndex + len(evmFingerArray):
         return evmFingerArray[boneIndex - fingerIndex]
     elif 0 <= boneIndex < len(kmsBoneNames):
         return kmsBoneNames[boneIndex]
