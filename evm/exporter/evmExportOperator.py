@@ -53,7 +53,7 @@ class ExportMgsEvm(bpy.types.Operator, ExportHelper):
         if self.make_cmdl:
             from ...cmdl.exporter import cmdl_exporter
             dirname, basename = os.path.split(self.filepath)
-            cmdl_basename = basename.replace(".kms", ".cmdl")
+            cmdl_basename = basename.replace(".evm", ".cmdl")
             if os.path.isabs(self.cmdl_path):
                 win_folder = self.cmdl_path
             else:
