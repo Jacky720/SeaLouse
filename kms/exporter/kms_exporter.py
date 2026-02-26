@@ -34,7 +34,7 @@ def kmsUvFromLayerAndLoop(mesh, uvLayer: int, loopIndex: int) -> KMSUv:
     return KMSUv(uv.x * 4096, (1 - uv.y) * 4096)
 
 
-def main(kms_file: str, collection_name: str, ctxr_dir: str = None):
+def main(kms_file: str, collection_name: str, ctxr_dir: str = None, ctxr_bak: str = 'never'):
     kms = KMS()
     
     collection = bpy.data.collections[collection_name]
@@ -193,7 +193,7 @@ def main(kms_file: str, collection_name: str, ctxr_dir: str = None):
     
     if ctxr_dir:
         print("Saving new CTXRs...")
-        texSave.save_textures(ctxr_dir)
+        texSave.save_textures(ctxr_dir, ctxr_bak)
         print("CTXR COMPLETE :)")
     
     with open(kms_file, "wb") as f:
