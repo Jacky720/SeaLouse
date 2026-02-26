@@ -2,7 +2,7 @@ import bpy
 import os
 from math import radians
 from ..ctxr.ctxr import DDS, CTXR, ctxr_lookup_path
-from .util import replaceExt
+from .util import replaceExt, create_bak
 
 class MaterialHelper:
     material: bpy.types.Material
@@ -236,17 +236,10 @@ class TextureLoad:
 
 
 class TextureSave:
-    ctxr_id_lookup: dict
     textures_to_save: set[bpy.types.Image]
 
     def __init__(self):
-        self.ctxr_id_lookup = {}
         self.textures_to_save = set()
-        
-        with open(ctxr_lookup_path, "rt") as f:
-            for line in f.readlines():
-                tga_num = os.path.splitext(line.split()[1])[0]
-                self.ctxr_id_lookup[line.split()[2]] = int(tga_num)
     
     def get_map(self, mat: bpy.types.Material, mapType: str) -> int:
         nodes = mat.node_tree.nodes
@@ -301,15 +294,15 @@ class TextureSave:
             # TGA detection takes priority over fallback ID
             if matchImageName.isnumeric() and matchImageExt == ".tga":
                 mapID = int(matchImageName)
-            elif matchImageExt == ".dds" and matchImageName + ".png" in self.ctxr_id_lookup:
+            elif matchImageExt == ".dds":
                 self.textures_to_save.add(matchImage)
                 # DDS detection does not have priority over fallback ID
                 if not mapID:
-                    mapID = self.ctxr_id_lookup[matchImageName + ".png"]
+                    mapID = compute_hash(matchImageName.split('.')[0])
         
         return mapID
     
-    def save_textures(self, extract_dir: str):
+    def save_textures(self, extract_dir: str, bak_mode: str = 'never'):
         for image in self.textures_to_save:
             ctxr_name = replaceExt(image.name, "ctxr")
             print("Packing image", ctxr_name)
@@ -322,5 +315,16 @@ class TextureSave:
             if "ovl" in ctxr_name and "alp" in ctxr_name:
                 # Specular maps/transparent textures need different parameters
                 ctxr.header.unknown4 = [0, 0, 0, 2, 2, 2, 0, 2, 2, 2, 0x68, 0xff, 0xff, 0, 0, 0, 0, 0]
-            with open(os.path.join(extract_dir, ctxr_name), "wb") as f:
+            ctxr_path = os.path.join(extract_dir, ctxr_name)
+            create_bak(ctxr_path, bak_mode)
+            with open(ctxr_path, "wb") as f:
                 ctxr.writeToFile(f)
+
+# Thanks TrikzMe
+def compute_hash(string):
+    h = 0
+    for c in string:
+        h = ((h << 0x05) | (h >> 0x13)) + ord(c)
+        h &= 0xffffff
+    return h
+

@@ -1,4 +1,4 @@
-import os
+import os, shutil
 
 kmsBoneNameArray = [
     # Tuples indicate a bone that we would prefer to map differently with MGR models (I like MGR)
@@ -74,6 +74,21 @@ evmFingerArray = [
     "pinkie_1", "pinkie_2", "pinkie_3"
 ]
 evmFingerArray = [x + "_R" for x in evmFingerArray] + [x + "_L" for x in evmFingerArray]
+
+BakFileModes = [
+    ('never', 'Never', 'Do not create .bak'),
+    ('nexist', 'If not exists', 'Create .bak if one does not exist'),
+    ('always', 'Always', 'Create .bak on any file overwrite')
+]
+
+def create_bak(filepath: str, bakmode: str = 'nexist'):
+    if bakmode == 'never':
+        return
+    if not os.path.exists(filepath):
+        return
+    if bakmode == 'always' or not os.path.exists(filepath + '.bak'):
+        print("Backing up", filepath)
+        shutil.copyfile(filepath, filepath + '.bak')
 
 def getBoneName(boneIndex: int, fingerIndex: int = -1):
     if fingerIndex >= 0 and fingerIndex <= boneIndex < fingerIndex + len(evmFingerArray):
