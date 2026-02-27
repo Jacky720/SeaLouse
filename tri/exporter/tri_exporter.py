@@ -1,8 +1,8 @@
 import bpy
-from os import path
+from os import path, listdir
 from ..tri import TRI, TRIEntry
 from ...util.materials import compute_hash, TextureSave
-from ...util.util import create_bak
+from ...util.util import create_bak, replaceExt
 
 def main(tri_path: str, col: bpy.types.Collection, stage_path: str = None, stage_bak: str = 'nexist'):
     amt = [x for x in col.all_objects if x.type == "ARMATURE"][0]
@@ -44,20 +44,23 @@ def main(tri_path: str, col: bpy.types.Collection, stage_path: str = None, stage
         tri.writeToFile(tri_fp)
     
     if stage_path:
-        for stage in os.listdir(stage_path):
-            export_stage(tri_name, os.path.join(stage_path, stage), texSave, stage_bak)
+        for stage in listdir(stage_path):
+            export_stage(tri_name, path.join(stage_path, stage), texSave, stage_bak)
 
 
 def export_stage(tri_name: str, stage_path: str, texSave: TextureSave, stage_bak: str = 'nexist'):
     # ex. "r_plt0"
-    stage_folder = os.path.basename(stage_path)
+    stage_folder = path.basename(stage_path)
     if stage_folder.startswith('r_'):
         subfoldermode = 'resident'
     else:
         subfoldermode = 'cache'
+    lvl2folder = path.basename(path.dirname(stage_path))
+    # This one should always be "eu"
+    lvl3folder = path.basename(path.dirname(path.dirname(stage_path)))
     # First, scan manifest.txt for tri reference.
-    manifest_path = os.path.join(stage_path, "manifest.txt")
-    if os.path.exists(manifest_path):
+    manifest_path = path.join(stage_path, "manifest.txt")
+    if path.exists(manifest_path):
         with open(manifest_path, "rt") as manifest_fp:
             lines = manifest_fp.read().split("\n\n")[:-1]
     else:
@@ -72,8 +75,8 @@ def export_stage(tri_name: str, stage_path: str, texSave: TextureSave, stage_bak
     tri_hash: str = line.split('/')[-1][:8]
     # Next, bp_assets.txt. This contains ctxrs, then cmdls
     # We are only worried about ctxr
-    assets_path = os.path.join(stage_path, "bp_assets.txt")
-    if os.path.exists(assets_path):
+    assets_path = path.join(stage_path, "bp_assets.txt")
+    if path.exists(assets_path):
         with open(assets_path, "rt") as assets_fp:
             lines = assets_fp.read().split("\n\n")[:-1]
     else:
@@ -83,11 +86,11 @@ def export_stage(tri_name: str, stage_path: str, texSave: TextureSave, stage_bak
     for image in texSave.textures_to_save:
         texName = replaceExt(image.name, "ctxr")
         line = ','.join([
-          os.path.join("textures/flatlist/", texName),
-          os.path.join("stage/", stage_folder, subfoldermode, texName),
-          os.path.join("eu/stage/", stage_folder,
-                       subfoldermode, tri_hash,
-                       f"{compute_hash(texName.split('.')[0]):08x}.ctxr")
+          path.join("textures/flatlist/", texName),
+          path.join(lvl2folder, stage_folder, subfoldermode, texName),
+          path.join(lvl3folder, lvl2folder, stage_folder,
+                    subfoldermode, tri_hash,
+                    f"{compute_hash(texName.split('.')[0]):08x}.ctxr")
         ]).replace('\\', '/')  # windows, shut up
         if any(line in line2 for line2 in lines):
             continue  # Duplicate, possibly double export
@@ -99,9 +102,9 @@ def export_stage(tri_name: str, stage_path: str, texSave: TextureSave, stage_bak
         write_weird_txt(assets_path, lines)
 
 
-def write_weird_txt(path: str, lines: list[str]):
-    with open(path, "wb") as fp:
+def write_weird_txt(txt_path: str, lines: list[str]):
+    with open(txt_path, "wb") as fp:
         for line in lines:
             fp.write(line.encode('utf-8'))
             fp.write(b"\r\r\n")  # Whyyyyy Bluepoint
-    print(f'Saved {os.path.basename(path)}! :)')
+    print(f'Saved {path.basename(txt_path)}! :)')
