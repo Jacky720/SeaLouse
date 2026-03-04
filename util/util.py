@@ -135,3 +135,16 @@ def stripAllExt(path:str) -> str:
 
     return p
     
+texture_modes = [
+    ('none', 'No Textures', 'Do not load textures'),
+    ('tri', 'Unpack .tri', 'Unpack .tga from .tri file'),
+    ('ctxr', 'Unpack .ctxr', 'Unpack .png from .ctxr files')
+]
+
+def changeTextureMode(self, context):
+    if self.texture_mode == 'tri':
+        if self.texture_path == "" or self.texture_path == "../../../textures/flatlist/_win/":
+            self.texture_path = "../../tri/us/"
+    if self.texture_mode == 'ctxr':
+        if self.texture_path == "" or self.texture_path == "../../tri/us/":
+            self.texture_path = "../../../textures/flatlist/_win/"

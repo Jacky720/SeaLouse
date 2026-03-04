@@ -1,21 +1,8 @@
 import bpy
 import os
-from ...util.util import replaceExt
+from ...config import kmsConfig
+from ...util.util import replaceExt, texture_modes, changeTextureMode
 from bpy_extras.io_utils import ImportHelper
-
-texture_modes = [
-    ('none', 'No Textures', 'Do not load textures'),
-    ('tri', 'Unpack .tri', 'Unpack .tga from .tri file'),
-    ('ctxr', 'Unpack .ctxr', 'Unpack .png from .ctxr files')
-]
-
-def changeTextureMode(self, context):
-    if self.texture_mode == 'tri':
-        if self.texture_path == "" or self.texture_path == "../../../textures/flatlist/_win/":
-            self.texture_path = "../../tri/us/"
-    if self.texture_mode == 'ctxr':
-        if self.texture_path == "" or self.texture_path == "../../tri/us/":
-            self.texture_path = "../../../textures/flatlist/_win/"
 
 class ImportMgsKms(bpy.types.Operator, ImportHelper):
     '''Load an MGS2 KMS File.'''
@@ -25,11 +12,11 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
     filename_ext = ".kms"
     filter_glob: bpy.props.StringProperty(default="*.kms", options={'HIDDEN'})
 
-    reset_blend: bpy.props.BoolProperty(name="Reset Blender Scene on Import", default=True)
-    texture_mode: bpy.props.EnumProperty(name="Textures", items=texture_modes, default=0, update=changeTextureMode)
+    reset_blend: bpy.props.BoolProperty(name="Reset Blender Scene on Import", default=kmsConfig['import.reset'])
+    texture_mode: bpy.props.EnumProperty(name="Textures", items=texture_modes, default=kmsConfig['import.texmode'], update=changeTextureMode)
     texture_path: bpy.props.StringProperty(name="Load Path:")
-    texture_overwrite: bpy.props.BoolProperty(name="Re-extract existing", default=False)
-    merge_material_slots: bpy.props.BoolProperty(name="Merge Similar Material Slots", default=False)
+    texture_overwrite: bpy.props.BoolProperty(name="Re-extract existing", default=kmsConfig['import.ctxr_replace'])
+    merge_material_slots: bpy.props.BoolProperty(name="Merge Similar Material Slots", default=kmsConfig['import.merge_mat'])
     
     files: bpy.props.CollectionProperty(
         name="KMS files",

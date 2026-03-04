@@ -2,6 +2,7 @@ import bpy
 from bpy import props
 from bpy_extras.io_utils import ExportHelper
 import os
+from ...config import kmsConfig
 from ...util.util import BakFileModes, create_bak, replaceExt
 
 
@@ -13,16 +14,16 @@ class ExportMgsKms(bpy.types.Operator, ExportHelper):
     filename_ext = ".kms"
     filter_glob: props.StringProperty(default="*.kms", options={'HIDDEN'})
     
-    kms_bak: props.EnumProperty(name="Backup KMS", items=BakFileModes, default=1)
+    kms_bak: props.EnumProperty(name="Backup KMS", items=BakFileModes, default=kmsConfig['export.kms_bak'])
 
-    make_cmdl: props.BoolProperty(name="Generate CMDL supplement", default=True)
+    make_cmdl: props.BoolProperty(name="Generate CMDL supplement", default=kmsConfig['export.make_cmdl'])
     #big_cmdl: props.BoolProperty(name="Split CMDL faces (DO NOT)", default=False)
-    cmdl_path: props.StringProperty(name="CMDL Path", default="_win/")
-    cmdl_bak: props.EnumProperty(name="Backup CMDL", items=BakFileModes, default=1)
+    cmdl_path: props.StringProperty(name="CMDL Path", default=kmsConfig['export.cmdl_path'])
+    cmdl_bak: props.EnumProperty(name="Backup CMDL", items=BakFileModes, default=kmsConfig['export.cmdl_bak'])
     
-    make_ctxr: props.BoolProperty(name="Repack CTXR textures", default=False)
-    ctxr_path: props.StringProperty(name="CTXR Path", default="../../../textures/flatlist/ovr_stm/_win/")
-    ctxr_bak: props.EnumProperty(name="Backup CTXR", items=BakFileModes, default=0)
+    make_ctxr: props.BoolProperty(name="Repack CTXR textures", default=kmsConfig['export.make_cmdl'])
+    ctxr_path: props.StringProperty(name="CTXR Path", default=kmsConfig['export.ctxr_path'])
+    ctxr_bak: props.EnumProperty(name="Backup CTXR", items=BakFileModes, default=kmsConfig['export.ctxr_bak'])
     
     # Override to set default file name
     def invoke(self, context, _event):

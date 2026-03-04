@@ -3,6 +3,7 @@ from bpy_extras.io_utils import ImportHelper
 import os
 from ..ctxr import CTXR
 from ...util.util import replaceExt
+from ...config import ctxrConfig
 
 
 class ImportMgsCtxr(bpy.types.Operator, ImportHelper):
@@ -14,7 +15,7 @@ class ImportMgsCtxr(bpy.types.Operator, ImportHelper):
     filter_glob: bpy.props.StringProperty(default="*.ctxr", options={'HIDDEN'})
 
     #reset_blend: bpy.props.BoolProperty(name="Reset Blender Scene on Import", default=True)
-    bulk_import: bpy.props.BoolProperty(name="Bulk extract (not recommended)", default=False)
+    bulk_import: bpy.props.BoolProperty(name="Bulk extract (not recommended)", default=ctxrConfig['import.bulk'])
 
     def execute(self, context):
         if self.bulk_import:

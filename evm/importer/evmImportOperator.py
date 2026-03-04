@@ -1,22 +1,8 @@
 import bpy
 from bpy_extras.io_utils import ImportHelper
 import os
-from ...util.util import replaceExt
-
-
-texture_modes = [
-    ('none', 'No Textures', 'Do not load textures'),
-    ('tri', 'Unpack .tri', 'Unpack .tga from .tri file'),
-    ('ctxr', 'Unpack .ctxr', 'Unpack .png from .ctxr files')
-]
-
-def changeTextureMode(self, context):
-    if self.texture_mode == 'tri':
-        if self.texture_path == "" or self.texture_path == "../../../textures/flatlist/_win/":
-            self.texture_path = "../../tri/us/"
-    if self.texture_mode == 'ctxr':
-        if self.texture_path == "" or self.texture_path == "../../tri/us/":
-            self.texture_path = "../../../textures/flatlist/_win/"
+from ...config import evmConfig
+from ...util.util import replaceExt, texture_modes, changeTextureMode
 
 class ImportMgsEvm(bpy.types.Operator, ImportHelper):
     '''Load an MGS2 EVM File.'''
@@ -26,11 +12,11 @@ class ImportMgsEvm(bpy.types.Operator, ImportHelper):
     filename_ext = ".evm"
     filter_glob: bpy.props.StringProperty(default="*.evm", options={'HIDDEN'})
 
-    reset_blend: bpy.props.BoolProperty(name="Reset Blender Scene on Import", default=True)
-    texture_mode: bpy.props.EnumProperty(name="Textures", items=texture_modes, default=0, update=changeTextureMode)
+    reset_blend: bpy.props.BoolProperty(name="Reset Blender Scene on Import", default=evmConfig['import.reset'])
+    texture_mode: bpy.props.EnumProperty(name="Textures", items=texture_modes, default=evmConfig['import.texmode'], update=changeTextureMode)
     texture_path: bpy.props.StringProperty(name="Load Path:")
-    texture_overwrite: bpy.props.BoolProperty(name="Re-extract existing", default=False)
-    merge_material_slots: bpy.props.BoolProperty(name="Merge Similar Material Slots", default=False)
+    texture_overwrite: bpy.props.BoolProperty(name="Re-extract existing", default=evmConfig['import.ctxr_replace'])
+    merge_material_slots: bpy.props.BoolProperty(name="Merge Similar Material Slots", default=evmConfig['import.merge_mat'])
 
     files: bpy.props.CollectionProperty(
         name="EVM files",

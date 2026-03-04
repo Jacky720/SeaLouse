@@ -3,6 +3,7 @@ from bpy import props
 from bpy_extras.io_utils import ExportHelper
 import os
 from ...util.util import BakFileModes, create_bak, replaceExt
+from ...config import triConfig
 
 
 class ExportMgsTri(bpy.types.Operator, ExportHelper):
@@ -13,11 +14,11 @@ class ExportMgsTri(bpy.types.Operator, ExportHelper):
     filename_ext = ".tri"
     filter_glob: props.StringProperty(default="*.tri", options={'HIDDEN'})
     
-    tri_bak: props.EnumProperty(name="Backup TRI", items=BakFileModes, default=1)
+    tri_bak: props.EnumProperty(name="Backup TRI", items=BakFileModes, default=triConfig['export.tri_bak'])
     
-    make_stage: props.BoolProperty(name="Expand bp_assets.txts", default=False)
-    stage_path: props.StringProperty(name="Stage Path", default="../../../eu/stage/")
-    stage_bak: props.EnumProperty(name="Backup TXT", items=BakFileModes, default=1)
+    make_stage: props.BoolProperty(name="Expand bp_assets.txts", default=triConfig['export.edit_txt'])
+    stage_path: props.StringProperty(name="Stage Path", default=triConfig['export.txt_path'])
+    stage_bak: props.EnumProperty(name="Backup TXT", items=BakFileModes, default=triConfig['export.txt_bak'])
     
     # Multi-file handler
     files: bpy.props.CollectionProperty(

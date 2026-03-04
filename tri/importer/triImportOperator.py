@@ -2,6 +2,7 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 import os
 from ..tri import TRI
+from ...config import triConfig
 
 
 class ImportMgsTri(bpy.types.Operator, ImportHelper):
@@ -13,7 +14,7 @@ class ImportMgsTri(bpy.types.Operator, ImportHelper):
     filter_glob: bpy.props.StringProperty(default="*.tri", options={'HIDDEN'})
 
     #reset_blend: bpy.props.BoolProperty(name="Reset Blender Scene on Import", default=True)
-    bulk_import: bpy.props.BoolProperty(name="Bulk extract from folder", default=False)
+    bulk_import: bpy.props.BoolProperty(name="Bulk extract from folder", default=triConfig['import.bulk'])
 
     def execute(self, context):
         if self.bulk_import:
@@ -34,3 +35,4 @@ class ImportMgsTri(bpy.types.Operator, ImportHelper):
                 myTri.fromFile(f)
             myTri.dumpTextures(extract_dir)
         return {'FINISHED'}
+

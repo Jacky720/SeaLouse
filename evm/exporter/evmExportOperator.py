@@ -2,6 +2,7 @@ import bpy
 from bpy import props
 from bpy_extras.io_utils import ExportHelper
 import os
+from ...config import evmConfig
 
 
 class ExportMgsEvm(bpy.types.Operator, ExportHelper):
@@ -12,11 +13,11 @@ class ExportMgsEvm(bpy.types.Operator, ExportHelper):
     filename_ext = ".evm"
     filter_glob: props.StringProperty(default="*.evm", options={'HIDDEN'})
 
-    make_cmdl: props.BoolProperty(name="Generate CMDL supplement", default=True)
+    make_cmdl: props.BoolProperty(name="Generate CMDL supplement", default=evmConfig['export.make_cmdl'])
     big_cmdl: props.BoolProperty(name="Split CMDL faces (DO NOT)", default=False)
-    cmdl_path: props.StringProperty(name="CMDL Path:", default="_win/")
-    pack_textures: props.BoolProperty(name="Repack CTXR textures", default=False)
-    tex_path: props.StringProperty(name="CTXR Path:", default="../../../textures/flatlist/ovr_stm/_win/")
+    cmdl_path: props.StringProperty(name="CMDL Path:", default=evmConfig['export.cmdl_path'])
+    pack_textures: props.BoolProperty(name="Repack CTXR textures", default=evmConfig['export.make_ctxr'])
+    tex_path: props.StringProperty(name="CTXR Path:", default=evmConfig['export.ctxr_path'])
     
     # Override to set default file name
     def invoke(self, context, _event):
