@@ -2,7 +2,7 @@ import bpy
 import os
 from math import radians
 from ..ctxr.ctxr import DDS, CTXR, ctxr_lookup_path
-from .util import replaceExt, create_bak
+from .util import replaceExt, stripAllExt, create_bak
 
 class MaterialHelper:
     material: bpy.types.Material
@@ -47,17 +47,23 @@ class MaterialHelper:
         self.links.new(specular_output, env_multiplier.inputs[6])  # 'A'
         self.links.new(env_node.outputs['Color'], env_multiplier.inputs[7])  # 'B'
         return env_multiplier
+    
+    @staticmethod
+    def get_unique_id(flag: int, colorId: int, specularId: int, environmentId: int) -> str:
+        return str(flag)+str(colorId)+str(specularId)+str(specularId)
 
 
 class TextureLoad:
     extract_dir: str
     ctxr_dir: str | None  # ctxr load folder if using ctxr
     ctxr_name_lookup: dict
+    material_cache: dict
     overwrite_existing: bool
 
     def __init__(self, extract_dir: str, ctxr_dir: str = None, overwrite_existing: bool = False):
         self.extract_dir = extract_dir
         self.ctxr_dir = ctxr_dir
+        self.material_cache = {}
         self.ctxr_name_lookup = {}
         self.overwrite_existing = overwrite_existing
 
@@ -110,15 +116,23 @@ class TextureLoad:
             return ""
         return f"{mapID}.tga"
 
-    def makeMaterial(self, name: str, flag: int, colorId: int, specularId: int, environmentId: int) -> bpy.types.Material:
-        material = bpy.data.materials.new(name)
+
+    def makeMaterial(self, name: str, flag: int, colorId: int, specularId: int, environmentId: int, merge_materials: bool) -> bpy.types.Material:
+        unique_id = MaterialHelper.get_unique_id(flag, colorId, specularId, environmentId)
+
+        if merge_materials and unique_id in self.material_cache:
+            return self.material_cache[unique_id]
+
+        colorMapName = self.get_texture_nice_name(colorId)
+        material = bpy.data.materials.new(stripAllExt(colorMapName))
+        self.material_cache[unique_id] = material
         matHelper = MaterialHelper(material)
         # Save flag as custom property
         material["flag"] = flag
         # Recreate Nodes and Links with references
         nodes = matHelper.nodes
         links = matHelper.links
-        # Render properties
+        # Render properties (TODO: User-defined? See blend method below also)
         material.blend_method = 'OPAQUE'
         material.use_backface_culling = True
         # PrincipledBSDF and Ouput Shader
@@ -129,7 +143,6 @@ class TextureLoad:
         output_link = links.new( principled.outputs['BSDF'], output.inputs['Surface'] )
 
         colorMap = self.get_texture(colorId)
-        colorMapName = self.get_texture_nice_name(colorId)
         isAlphaBlended = colorMap is not None and colorMapName.find("alp") >= 0 and colorMapName.find("ovl") >= 0
         if colorMap is not None:
             color_image = nodes.new(type='ShaderNodeTexImage')
@@ -145,6 +158,7 @@ class TextureLoad:
             links.new(color_image.outputs['Color'], principled.inputs['Base Color'])
             
             if isAlphaBlended:
+                # May also be user-defined
                 material.blend_method = 'BLEND'
                 output_alpha = color_image.outputs['Alpha']
                 if self.ctxr_dir:

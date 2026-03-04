@@ -4,7 +4,7 @@ from ..kms import *
 import os
 from mathutils import Vector
 from ...util.util import getBoneName, expected_parent_bones
-from ...util.materials import TextureLoad
+from ...util.materials import TextureLoad, MaterialHelper
 from .rotationWrapperObj import objRotationWrapper
 import bmesh
 
@@ -39,7 +39,7 @@ def set_partent(parent, child):
     parent.select_set(False)
 
 
-def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_dir: str, hasHumanBones: bool, texLoader: TextureLoad):
+def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_dir: str, hasHumanBones: bool, texLoader: TextureLoad, merge_material_slots: bool):
     print(f"Importing mesh {meshInd}, parent {mesh.parentInd}, pos {meshPos}")
     vertices = []
     normals = []
@@ -49,6 +49,7 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
     uvs2 = []
     uvs3 = []
     weights = []
+    uniqueMaterialIndices: dict = {}
     #bpy.context.scene.collection.children.link(bpy.data.collections.new("looseCoords"))
     for i, vertexGroup in enumerate(mesh.vertexGroups):
         faceIndexOffset = len(vertices)
@@ -79,7 +80,17 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
                     faces.append((j - 2 + faceIndexOffset, j - 1 + faceIndexOffset, j + faceIndexOffset))
                 else:
                     faces.append((j - 2 + faceIndexOffset, j + faceIndexOffset, j - 1 + faceIndexOffset))
-                materialIndices.append(i)
+
+                mat_id = MaterialHelper.get_unique_id(vertexGroup.flag, vertexGroup.colorMap, vertexGroup.specularMap, vertexGroup.environmentMap)
+
+                if merge_material_slots:
+                    if mat_id not in uniqueMaterialIndices:
+                        uniqueMaterialIndices[mat_id] = len(uniqueMaterialIndices)
+
+                    materialIndices.append(uniqueMaterialIndices[mat_id])
+                else:
+                    materialIndices.append(i)
+
                 flip = not flip
             else:
                 flip = False
@@ -132,7 +143,7 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
         for i, x in enumerate(weights):
             parentGroup.add([i], 1 - x / 4096, "REPLACE")
     
-    if apply_materials(mesh, obj, extract_dir, texLoader):
+    if apply_materials(mesh, obj, extract_dir, texLoader, merge_material_slots):
         bm = bmesh.new()
         bm.from_mesh(objmesh)
         uv_layer = bm.loops.layers.uv.new("UVMap1")
@@ -207,16 +218,18 @@ def construct_armature(kms: KMS, kmsName: str, hasHumanBones: bool):
     bpy.ops.object.mode_set(mode='OBJECT')
     return ob
 
-def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad):
+def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad, merge_material_slots: bool):
     if mesh.numVertexGroup == 0:
         return False
     
     for vGroup in mesh.vertexGroups:
-        material = texLoader.makeMaterial(obj.name, vGroup.flag, vGroup.colorMap, vGroup.specularMap, vGroup.environmentMap)
-        obj.data.materials.append(material)
+        material = texLoader.makeMaterial(obj.name, vGroup.flag, vGroup.colorMap, vGroup.specularMap, vGroup.environmentMap, merge_material_slots)
+        
+        if not merge_material_slots or material.name not in obj.data.materials:
+            obj.data.materials.append(material)
     return True
 
-def main(kms_file: str, ctxr_path: str = None, overwrite_existing: bool = False):
+def main(kms_file: str, ctxr_path: str = None, overwrite_existing: bool = False, merge_material_slots: bool = False):
     kms = KMS()
     with open(kms_file, "rb") as f:
         kms.fromFile(f)
@@ -261,7 +274,8 @@ def main(kms_file: str, ctxr_path: str = None, overwrite_existing: bool = False)
                                       tuple(meshPos.xyz()),
                                       extract_dir,
                                       hasHumanBones,
-                                      texLoader))
+                                      texLoader,
+                                      merge_material_slots))
     
     amt = construct_armature(kms, collection_name, hasHumanBones)
     for mesh in bMeshes:

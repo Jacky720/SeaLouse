@@ -4,7 +4,7 @@ import os
 from mathutils import Vector
 from ...kms.importer.rotationWrapperObj import objRotationWrapper
 from ...util.util import getBoneName, expected_parent_bones
-from ...util.materials import TextureLoad
+from ...util.materials import TextureLoad, MaterialHelper
 import bmesh
 
 DEFAULT_BONE_LENGTH = 10
@@ -40,7 +40,7 @@ def set_partent(parent, child):
     parent.select_set(False)
 
 
-def construct_mesh(evm: EVM, evmCollection, extract_dir: str, hasHumanBones: bool, texLoader: TextureLoad):
+def construct_mesh(evm: EVM, evmCollection, extract_dir: str, hasHumanBones: bool, texLoader: TextureLoad, merge_material_slots: bool):
     print("Importing mesh")
     vertices = []
     normals = []
@@ -51,6 +51,7 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str, hasHumanBones: boo
     uvs3 = []
     weights = []
     boneIndices = []
+    uniqueMaterialIndices: dict = {}
     #bpy.context.scene.collection.children.link(bpy.data.collections.new("looseCoords"))
     for i, vertexGroup in enumerate(evm.meshes):
         faceIndexOffset = len(vertices)
@@ -89,7 +90,17 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str, hasHumanBones: boo
                     faces.append((j - 2 + faceIndexOffset, j - 1 + faceIndexOffset, j + faceIndexOffset))
                 else:
                     faces.append((j - 2 + faceIndexOffset, j + faceIndexOffset, j - 1 + faceIndexOffset))
-                materialIndices.append(i)
+                
+                mat_id = MaterialHelper.get_unique_id(vertexGroup.flag, vertexGroup.colorMap, vertexGroup.specularMap, vertexGroup.environmentMap)
+
+                if merge_material_slots:
+                    if mat_id not in uniqueMaterialIndices:
+                        uniqueMaterialIndices[mat_id] = len(uniqueMaterialIndices)
+
+                    materialIndices.append(uniqueMaterialIndices[mat_id])
+                else:
+                    materialIndices.append(i)
+
                 flip = not flip
             else:
                 flip = False
@@ -154,7 +165,7 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str, hasHumanBones: boo
                 vgroups[boneName].add([i], weight / 128, "ADD")
             i += 1
     
-    if apply_materials(evm, obj, extract_dir, texLoader):
+    if apply_materials(evm, obj, extract_dir, texLoader, merge_material_slots):
         bm = bmesh.new()
         bm.from_mesh(objmesh)
         uv_layer = bm.loops.layers.uv.new("UVMap1")
@@ -225,16 +236,19 @@ def construct_armature(evm: EVM, evmName: str, hasHumanBones: bool):
     bpy.ops.object.mode_set(mode='OBJECT')
     return ob
 
-def apply_materials(evm: EVM, obj, extract_dir: str, texLoader: TextureLoad):
+def apply_materials(evm: EVM, obj, extract_dir: str, texLoader: TextureLoad, merge_material_slots: bool):
     if evm.header.numMeshes == 0:
         return False
     
     for vGroup in evm.meshes:
-        material = texLoader.makeMaterial(obj.name, vGroup.flag, vGroup.colorMap, vGroup.specularMap, vGroup.environmentMap)
-        obj.data.materials.append(material)
+        material = texLoader.makeMaterial(obj.name, vGroup.flag, vGroup.colorMap, vGroup.specularMap, vGroup.environmentMap, merge_material_slots)
+        
+        if not merge_material_slots or material.name not in obj.data.materials:
+            obj.data.materials.append(material)
+
     return True
 
-def main(evm_file: str, ctxr_path: str = None, overwrite_existing: bool = False):
+def main(evm_file: str, ctxr_path: str = None, overwrite_existing: bool = False, merge_material_slots: bool = False):
     evm = EVM()
     with open(evm_file, "rb") as f:
         evm.fromFile(f)
@@ -264,7 +278,7 @@ def main(evm_file: str, ctxr_path: str = None, overwrite_existing: bool = False)
     
     texLoader = TextureLoad(extract_dir, ctxr_path, overwrite_existing)
     
-    mesh = construct_mesh(evm, col, extract_dir, hasHumanBones, texLoader)
+    mesh = construct_mesh(evm, col, extract_dir, hasHumanBones, texLoader, merge_material_slots)
     amt = construct_armature(evm, collection_name, hasHumanBones)
     set_partent(amt, mesh)
     
