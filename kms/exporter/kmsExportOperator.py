@@ -1,6 +1,8 @@
 import bpy
+from bpy import props
 from bpy_extras.io_utils import ExportHelper
 import os
+from ...util.util import BakFileModes, create_bak, replaceExt
 
 
 class ExportMgsKms(bpy.types.Operator, ExportHelper):
@@ -9,14 +11,32 @@ class ExportMgsKms(bpy.types.Operator, ExportHelper):
     bl_label = "Export KMS Data"
     bl_options = {'PRESET'}
     filename_ext = ".kms"
-    filter_glob: bpy.props.StringProperty(default="*.kms", options={'HIDDEN'})
+    filter_glob: props.StringProperty(default="*.kms", options={'HIDDEN'})
+    
+    kms_bak: props.EnumProperty(name="Backup KMS", items=BakFileModes, default=1)
 
-    make_cmdl: bpy.props.BoolProperty(name="Generate CMDL supplement", default=True)
-    big_cmdl: bpy.props.BoolProperty(name="Split CMDL faces (DO NOT)", default=False)
-    cmdl_path: bpy.props.StringProperty(name="CMDL Path:", default="_win/")
-    pack_textures: bpy.props.BoolProperty(name="Repack CTXR textures", default=False)
-    tex_path: bpy.props.StringProperty(name="CTXR Path:", default="../../../textures/flatlist/ovr_stm/_win/")
+    make_cmdl: props.BoolProperty(name="Generate CMDL supplement", default=True)
+    #big_cmdl: props.BoolProperty(name="Split CMDL faces (DO NOT)", default=False)
+    cmdl_path: props.StringProperty(name="CMDL Path", default="_win/")
+    cmdl_bak: props.EnumProperty(name="Backup CMDL", items=BakFileModes, default=1)
+    
+    make_ctxr: props.BoolProperty(name="Repack CTXR textures", default=False)
+    ctxr_path: props.StringProperty(name="CTXR Path", default="../../../textures/flatlist/ovr_stm/_win/")
+    ctxr_bak: props.EnumProperty(name="Backup CTXR", items=BakFileModes, default=0)
+    
+    # Override to set default file name
+    def invoke(self, context, _event):
+        if not self.filepath:
+            if bpy.data.collections.get("KMS") and bpy.data.collections["KMS"].children:
+                blend_filepath = bpy.data.collections["KMS"].children[0].name
+            else:
+                blend_filepath = "untitled"
 
+            self.filepath = blend_filepath + self.filename_ext
+
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+    
     def execute(self, context):
         from . import kms_exporter
         if not bpy.data.collections.get("KMS") or len(bpy.data.collections["KMS"].children) == 0:
@@ -24,41 +44,49 @@ class ExportMgsKms(bpy.types.Operator, ExportHelper):
         elif len(bpy.data.collections["KMS"].children) > 1:
             raise Exception("Multiple KMS subcollections found, cannot export.")
         
-        colName = bpy.data.collections["KMS"].children[0].name
-        tex_path = None
-        if self.pack_textures:
-            if os.path.isabs(self.tex_path):
-                tex_path = self.tex_path
-            else:
-                tex_path = os.path.join(os.path.dirname(self.filepath), self.tex_path)
-            os.makedirs(tex_path, exist_ok=True)
+        collection = bpy.data.collections["KMS"].children[0]
+        
+        # KMS and CTXR export
+        ctxr_path = None
+        if self.make_ctxr:
+            ctxr_path = self.makeabs(self.ctxr_path)
+            os.makedirs(ctxr_path, exist_ok=True)
+        
+        create_bak(self.filepath, self.kms_bak)
         print("Saving", self.filepath)
-        kms_exporter.main(self.filepath, colName, tex_path)
+        kms_exporter.main(self.filepath, collection.name, ctxr_path, self.ctxr_bak)
         print('KMS COMPLETE :)')
         
+        # CMDL export
         if self.make_cmdl:
             from ...cmdl.exporter import cmdl_exporter
-            dirname, basename = os.path.split(self.filepath)
-            cmdl_basename = basename.replace(".kms", ".cmdl")
-            if os.path.isabs(self.cmdl_path):
-                win_folder = self.cmdl_path
-            else:
-                win_folder = os.path.join(dirname, self.cmdl_path)
-            os.makedirs(win_folder, exist_ok=True)
-            cmdl_path = os.path.join(win_folder, cmdl_basename)
-            print("Saving", cmdl_path)
+            cmdl_basename = replaceExt(os.path.basename(self.filepath), "cmdl")
+            cmdl_path = os.path.join(self.makeabs(self.cmdl_path), cmdl_basename)
+            os.makedirs(os.path.dirname(cmdl_path), exist_ok=True)
             
-            cmdl_exporter.main(cmdl_path, colName, False, self.big_cmdl)
+            create_bak(cmdl_path, self.cmdl_bak)
+            print("Saving", cmdl_path)
+            cmdl_exporter.main(cmdl_path, collection.name, False, False)
             print('CMDL COMPLETE :)')
+        
         
         return {'FINISHED'}
         
     def draw(self, context):
         layout = self.layout
         col = layout.column()
+        col.prop(self, "kms_bak")
         col.prop(self, "make_cmdl")
         if self.make_cmdl:
             col.prop(self, "cmdl_path")
-        col.prop(self, "pack_textures")
-        if self.pack_textures:
-            col.prop(self, "tex_path")
+            col.prop(self, "cmdl_bak")
+        col.prop(self, "make_ctxr")
+        if self.make_ctxr:
+            col.prop(self, "ctxr_path")
+            col.prop(self, "ctxr_bak")
+
+    def makeabs(self, path: str) -> str:
+        if os.path.isabs(path):
+            return path
+        else:
+            return os.path.join(os.path.dirname(self.filepath), path)

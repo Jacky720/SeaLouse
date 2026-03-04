@@ -8,8 +8,12 @@ class TRI:
     header: TRIHeader
     textures: List[TRIEntry]
     
+    def __init__(self):
+        self.header = TRIHeader()
+        self.textures = []
+    
     def fromFile(self, file: BufferedReader):
-        self.header = TRIHeader().fromFile(file)
+        self.header.fromFile(file)
         
         self.textures = [
             TRIEntry().fromFile(file)
@@ -49,8 +53,20 @@ class TRI:
         return
     
     def writeToFile(self, file: BufferedWriter):
-        print("TRI write TODO")
-        return
+        self.header.height = len(self.header.rawData) // 64
+        self.header.clutHeight = len(self.header.rawClut) // 64
+        self.header.numTexture = len(self.textures)
+        self.header.imageOffset = 0x20 + 0xc0 * self.header.numTexture
+        self.header.clutOffset = self.header.imageOffset + 4 * len(self.header.rawData)
+        
+        self.header.writeToFile(file)
+        for tex in self.textures:
+            tex.writeToFile(file)
+        file.seek(self.header.imageOffset)
+        for i in range(64 * self.header.height):
+            file.write(struct.pack("<I", self.header.rawData[i]))
+        for i in range(64 * self.header.clutHeight):
+            file.write(struct.pack("<I", self.header.rawClut[i]))
 
 
 class TRIHeader:
@@ -65,6 +81,18 @@ class TRIHeader:
     
     rawData: List[int] # technically uints/bytes/whatever
     rawClut: List[int]
+    
+    def __init__(self):
+        self.pad = 0
+        self.width = 0
+        self.height = 0
+        self.clutHeight = 0
+        self.numTexture = 0
+        self.pad2 = 0
+        self.imageOffset = 0
+        self.clutOffset = 0
+        self.rawData = []
+        self.rawClut = []
     
     def fromFile(self, file: BufferedReader):
         self.pad, self.width, self.height, self.clutHeight, \
@@ -153,7 +181,10 @@ class TRIEntry:
     unknownG: int
     unknownH: int
     registerInfo2: GsTex0
-    unknownI: List[int] # 10 entries
+    unknownI: int
+    unknownJ: int
+    texType: int
+    unknownK: List[int] # 7 entries
     u1: float
     v1: float
     u2: float
@@ -163,6 +194,39 @@ class TRIEntry:
     pad4: int
     pad5: int
     
+    def __init__(self):
+        self.uOffset = 0.0
+        self.vOffset = 0.0
+        self.uScale = 1.0
+        self.vScale = 1.0
+        self.texID = 0
+        self.pad = [0] * 11
+        self.unknownA = 0
+        self.unknownB = 0
+        self.unknownC = 0
+        self.pad2 = 0
+        self.unknownD = 0
+        self.unknownE = 0
+        self.unknownF = 0
+        self.pad3 = 0
+        self.registerInfo1 = GsTex0()
+        self.unknownG = 0
+        self.unknownH = 0
+        self.registerInfo2 = GsTex0()
+        self.unknownI = 0
+        self.unknownJ = 0
+        self.texType = 0
+        self.unknownK = [0] * 7
+        self.u1 = 0.0
+        self.v1 = 0.0
+        self.u2 = 0.0
+        self.v2 = 0.0
+        self.u3 = 0.0
+        self.v3 = 0.0
+        self.pad4 = 0
+        self.pad5 = 0
+        
+    
     def fromFile(self, file: BufferedReader):
         self.uOffset, self.vOffset, self.uScale, self.vScale, \
         self.texID = struct.unpack("<ffffI", file.read(0x14))
@@ -170,10 +234,11 @@ class TRIEntry:
         self.unknownA, self.unknownB, self.unknownC, self.pad2, \
         self.unknownD, self.unknownE, self.unknownF, self.pad3 \
         = struct.unpack("<8I", file.read(0x20))
-        self.registerInfo1 = GsTex0().fromFile(file)
+        self.registerInfo1.fromFile(file)
         self.unknownG, self.unknownH = struct.unpack("<II", file.read(8))
-        self.registerInfo2 = GsTex0().fromFile(file)
-        self.unknownI = list(struct.unpack("<10I", file.read(0x28)))
+        self.registerInfo2.fromFile(file)
+        self.unknownI, self.unknownJ, self.texType = struct.unpack("<3I", file.read(0xC))
+        self.unknownK = list(struct.unpack("<7I", file.read(0x1C)))
         self.u1, self.v1, self.u2, self.v2, \
         self.u3, self.v3, self.pad4, self.pad5 \
         = struct.unpack("<6f2I", file.read(0x20))
@@ -255,8 +320,9 @@ class TRIEntry:
         file.write(struct.pack("<II", self.unknownG, self.unknownH))
         
         self.registerInfo2.writeToFile(file)
-        for i in range(10):
-            file.write(struct.pack("<I", self.unknownI[i]))
+        file.write(struct.pack("<3I", self.unknownI, self.unknownJ, self.texType))
+        for i in range(7):
+            file.write(struct.pack("<I", self.unknownK[i]))
         file.write(struct.pack("<6f2I", \
         self.u1, self.v1, self.u2, self.v2, \
         self.u3, self.v3, self.pad4, self.pad5))
@@ -291,13 +357,16 @@ class GsTex0:
     csa: int
     cld: int
     
+    def __init__(self):
+        self.rawData = 0
+        self.getAll()
+    
     def getBits(self, start, count):
         mask = (1 << count) - 1
         mask <<= start
         return (self.rawData & mask) >> start
     
-    def fromFile(self, file: BufferedReader):
-        self.rawData = struct.unpack("<Q", file.read(8))[0]
+    def getAll(self):
         self.tbp0 = self.getBits(0, 14)
         self.tbw = self.getBits(14, 6)
         self.psm = self.getBits(20, 6)
@@ -311,6 +380,11 @@ class GsTex0:
         self.csax = self.getBits(56, 1)
         self.csay = self.getBits(57, 4)
         self.cld = self.getBits(61, 3)
+    
+    
+    def fromFile(self, file: BufferedReader):
+        self.rawData = struct.unpack("<Q", file.read(8))[0]
+        self.getAll()
         return self
     
     def putBits(self, start, count, val):
@@ -319,7 +393,7 @@ class GsTex0:
         self.rawData &= ~mask
         self.rawData |= val << start
     
-    def writeToFile(self, file: BufferedWriter):
+    def putAll(self):
         self.putBits(0, 14, self.tbp0)
         self.putBits(14, 6, self.tbw)
         self.putBits(20, 6, self.psm)
@@ -333,6 +407,9 @@ class GsTex0:
         self.putBits(56, 1, self.csax)
         self.putBits(57, 4, self.csay)
         self.putBits(61, 3, self.cld)
+    
+    def writeToFile(self, file: BufferedWriter):
+        self.putAll()
         file.write(struct.pack("<Q", self.rawData))
 
 
@@ -497,7 +574,7 @@ def paintPixels(clut: List[int], pixels: List[int], width: int, height: int) -> 
             clutPix = clut[pixel]
             #print(clutPix[2], clutPix[1], clutPix[0], ((clutPix[3] * 255) // 0x80))
             if clutPix[3] > 0x80:  # Invalid clut
-                print("paintPixels: Invalid alpha in clut at %d, %d" % (x, y))
+                print("paintPixels: Invalid alpha in palette at %d, %d" % (x, y))
                 return None
             texture += struct.pack("BBBB", \
             clutPix[2], clutPix[1], clutPix[0], (clutPix[3] * 0xff) // 0x80)

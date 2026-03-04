@@ -1,4 +1,5 @@
 import bpy
+from bpy import props
 from bpy_extras.io_utils import ExportHelper
 import os
 
@@ -9,14 +10,27 @@ class ExportMgsEvm(bpy.types.Operator, ExportHelper):
     bl_label = "Export EVM Data"
     bl_options = {'PRESET'}
     filename_ext = ".evm"
-    filter_glob: bpy.props.StringProperty(default="*.evm", options={'HIDDEN'})
+    filter_glob: props.StringProperty(default="*.evm", options={'HIDDEN'})
 
-    make_cmdl: bpy.props.BoolProperty(name="Generate CMDL supplement", default=True)
-    big_cmdl: bpy.props.BoolProperty(name="Split CMDL faces (DO NOT)", default=False)
-    cmdl_path: bpy.props.StringProperty(name="CMDL Path:", default="_win/")
-    pack_textures: bpy.props.BoolProperty(name="Repack CTXR textures", default=False)
-    tex_path: bpy.props.StringProperty(name="CTXR Path:", default="../../../textures/flatlist/ovr_stm/_win/")
+    make_cmdl: props.BoolProperty(name="Generate CMDL supplement", default=True)
+    big_cmdl: props.BoolProperty(name="Split CMDL faces (DO NOT)", default=False)
+    cmdl_path: props.StringProperty(name="CMDL Path:", default="_win/")
+    pack_textures: props.BoolProperty(name="Repack CTXR textures", default=False)
+    tex_path: props.StringProperty(name="CTXR Path:", default="../../../textures/flatlist/ovr_stm/_win/")
+    
+    # Override to set default file name
+    def invoke(self, context, _event):
+        if not self.filepath:
+            if bpy.data.collections.get("EVM") and bpy.data.collections["EVM"].children:
+                blend_filepath = bpy.data.collections["EVM"].children[0].name
+            else:
+                blend_filepath = "untitled"
 
+            self.filepath = blend_filepath + self.filename_ext
+
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+    
     def execute(self, context):
         from . import evm_exporter
         if not bpy.data.collections.get("EVM") or len(bpy.data.collections["EVM"].children) == 0:
@@ -39,7 +53,7 @@ class ExportMgsEvm(bpy.types.Operator, ExportHelper):
         if self.make_cmdl:
             from ...cmdl.exporter import cmdl_exporter
             dirname, basename = os.path.split(self.filepath)
-            cmdl_basename = basename.replace(".kms", ".cmdl")
+            cmdl_basename = basename.replace(".evm", ".cmdl")
             if os.path.isabs(self.cmdl_path):
                 win_folder = self.cmdl_path
             else:
@@ -48,7 +62,7 @@ class ExportMgsEvm(bpy.types.Operator, ExportHelper):
             cmdl_path = os.path.join(win_folder, cmdl_basename)
             print("Saving", cmdl_path)
             
-            cmdl_exporter.main(cmdl_path, colName, False, self.big_cmdl)
+            cmdl_exporter.main(cmdl_path, colName, True, self.big_cmdl)
             print('CMDL COMPLETE :)')
         
         return {'FINISHED'}

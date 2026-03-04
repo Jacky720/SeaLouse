@@ -34,6 +34,7 @@ from .kms.exporter.kmsExportOperator import ExportMgsKms
 from .evm.importer.evmImportOperator import ImportMgsEvm
 from .evm.exporter.evmExportOperator import ExportMgsEvm
 from .tri.importer.triImportOperator import ImportMgsTri
+from .tri.exporter.triExportOperator import ExportMgsTri
 from .ctxr.importer.ctxrImportOperator import ImportMgsCtxr
 from .util.utilOperators import SealouseObjectMenu, SLObjectClasses
 
@@ -45,6 +46,7 @@ classes = {
     ImportMgsKms,
     ExportMgsKms,
     ImportMgsTri,
+    ExportMgsTri,
     ImportMgsEvm,
     ExportMgsEvm,
     ImportMgsCtxr
@@ -59,6 +61,7 @@ def menu_func_import(self, context):
 def menu_func_export(self, context):
     self.layout.operator(ExportMgsKms.bl_idname, text="KMS File for MGS2 (.kms)")
     self.layout.operator(ExportMgsEvm.bl_idname, text="EVM File for MGS2 (.evm)")
+    self.layout.operator(ExportMgsTri.bl_idname, text="Edit TRI Files for MGS2 (.tri)")
 
 def menu_func_utils(self, context):
     self.layout.menu(SealouseObjectMenu.bl_idname)
