@@ -29,7 +29,7 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
     texture_mode: bpy.props.EnumProperty(name="Textures", items=texture_modes, default=0, update=changeTextureMode)
     texture_path: bpy.props.StringProperty(name="Load Path:")
     texture_overwrite: bpy.props.BoolProperty(name="Re-extract existing", default=False)
-    merge_material_slots: bpy.props.BoolProperty(name="Merge Similar Material Slots", default=True)
+    merge_material_slots: bpy.props.BoolProperty(name="Merge Similar Material Slots", default=False)
     
     files: bpy.props.CollectionProperty(
         name="KMS files",
@@ -90,5 +90,6 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
         if self.texture_mode == 'ctxr':
             col.prop(self, "texture_overwrite")
         col.prop(self, "merge_material_slots")
+        col.label(text="(breaks KMS export)")
     
     
