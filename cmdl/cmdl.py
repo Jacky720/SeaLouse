@@ -1,5 +1,6 @@
 from __future__ import annotations
 from io import BufferedReader, BufferedWriter
+from math import isnan
 import struct
 from ..kms.kms import KMSVector3
 
@@ -232,6 +233,16 @@ class CMDLNrmData(CMDLSectionData): # Normals
     
     def writeToFile(self, file: BufferedWriter):
         for vert in self.data:
+            # Normalize normals because sometimes Blender gets extra silly
+            vert = list(vert)
+            if isnan(vert[0]): vert[0] = 0
+            if isnan(vert[1]): vert[1] = 0
+            if isnan(vert[2]): vert[2] = 0
+            vert_total = (vert[0]**2 + vert[1]**2 + vert[2]**2)**0.5
+            if vert_total == 0.0:
+                vert_total = 1.0
+                vert[0] = 1.0
+            vert[0] /= vert_total; vert[1] /= vert_total; vert[2] /= vert_total
             # I know where this code came from, it was ChatGPT when told to reverse that other code
             nx = int(round(vert[0] * float((1<<10)-1)))
             ny = int(round(vert[1] * float((1<<10)-1)))
@@ -246,7 +257,6 @@ class CMDLNrmData(CMDLSectionData): # Normals
                 nz += (1 << 9)
                 nz |= 1 << 9
             normal = nx | (ny << 11) | (nz << 22)
-            
             file.write(struct.pack("<I", normal))
 
 class CMDLTexData(CMDLSectionData): # UV maps

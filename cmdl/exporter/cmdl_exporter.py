@@ -193,6 +193,7 @@ def main(cmdl_file: str, collection_name: str, evmMode: bool = False, bigMode: b
                 newFace = list(range(j * 3 + vertIndexOffset, j * 3 + vertIndexOffset + 3))
             else:
                 newFace = [loop.vertex_index + vertIndexOffset for loop in loops]
+            newFace[1], newFace[2] = newFace[2], newFace[1]
             cmdl.tail.faces.append(newFace)
             # Mesh vertex limits
             for vertexIndex in newFace:
