@@ -21,7 +21,7 @@ class ExportMgsKms(bpy.types.Operator, ExportHelper):
     cmdl_path: props.StringProperty(name="CMDL Path", default=kmsConfig['export.cmdl_path'])
     cmdl_bak: props.EnumProperty(name="Backup CMDL", items=BakFileModes, default=kmsConfig['export.cmdl_bak'])
     
-    make_ctxr: props.BoolProperty(name="Repack CTXR textures", default=kmsConfig['export.make_cmdl'])
+    make_ctxr: props.BoolProperty(name="Repack CTXR textures", default=kmsConfig['export.make_ctxr'])
     ctxr_path: props.StringProperty(name="CTXR Path", default=kmsConfig['export.ctxr_path'])
     ctxr_bak: props.EnumProperty(name="Backup CTXR", items=BakFileModes, default=kmsConfig['export.ctxr_bak'])
     

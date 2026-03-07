@@ -1,7 +1,7 @@
 import bpy
 import os
 from ...config import kmsConfig
-from ...util.util import replaceExt, texture_modes, changeTextureMode
+from ...util.util import replaceExt, texture_modes, changeTextureMode, defaultTexturePaths
 from bpy_extras.io_utils import ImportHelper
 
 class ImportMgsKms(bpy.types.Operator, ImportHelper):
@@ -14,7 +14,7 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
 
     reset_blend: bpy.props.BoolProperty(name="Reset Blender Scene on Import", default=kmsConfig['import.reset'])
     texture_mode: bpy.props.EnumProperty(name="Textures", items=texture_modes, default=kmsConfig['import.texmode'], update=changeTextureMode)
-    texture_path: bpy.props.StringProperty(name="Load Path:")
+    texture_path: bpy.props.StringProperty(name="Load Path:", default=defaultTexturePaths[kmsConfig['import.texmode']])
     texture_overwrite: bpy.props.BoolProperty(name="Re-extract existing", default=kmsConfig['import.ctxr_replace'])
     merge_material_slots: bpy.props.BoolProperty(name="Merge Similar Material Slots", default=kmsConfig['import.merge_mat'])
     

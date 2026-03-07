@@ -2,7 +2,7 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 import os
 from ...config import evmConfig
-from ...util.util import replaceExt, texture_modes, changeTextureMode
+from ...util.util import replaceExt, texture_modes, changeTextureMode, defaultTexturePaths
 
 class ImportMgsEvm(bpy.types.Operator, ImportHelper):
     '''Load an MGS2 EVM File.'''
@@ -14,7 +14,7 @@ class ImportMgsEvm(bpy.types.Operator, ImportHelper):
 
     reset_blend: bpy.props.BoolProperty(name="Reset Blender Scene on Import", default=evmConfig['import.reset'])
     texture_mode: bpy.props.EnumProperty(name="Textures", items=texture_modes, default=evmConfig['import.texmode'], update=changeTextureMode)
-    texture_path: bpy.props.StringProperty(name="Load Path:")
+    texture_path: bpy.props.StringProperty(name="Load Path:", default=defaultTexturePaths[evmConfig['import.texmode']])
     texture_overwrite: bpy.props.BoolProperty(name="Re-extract existing", default=evmConfig['import.ctxr_replace'])
     merge_material_slots: bpy.props.BoolProperty(name="Merge Similar Material Slots", default=evmConfig['import.merge_mat'])
 

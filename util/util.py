@@ -141,10 +141,17 @@ texture_modes = [
     ('ctxr', 'Unpack .ctxr', 'Unpack .png from .ctxr files')
 ]
 
+defaultTexturePaths = [
+    "",
+    "../../tri/us/",
+    "../../../textures/flatlist/_win/"
+]
+
 def changeTextureMode(self, context):
+    if self.texture_path not in defaultTexturePaths:  # Don't overwrite custom
+        return
     if self.texture_mode == 'tri':
-        if self.texture_path == "" or self.texture_path == "../../../textures/flatlist/_win/":
-            self.texture_path = "../../tri/us/"
+        self.texture_path = defaultTexturePaths[1]
     if self.texture_mode == 'ctxr':
-        if self.texture_path == "" or self.texture_path == "../../tri/us/":
-            self.texture_path = "../../../textures/flatlist/_win/"
+        self.texture_path = defaultTexturePaths[2]
+
