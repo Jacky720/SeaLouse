@@ -42,6 +42,26 @@ from .util.utilOperators import SealouseObjectMenu, SLObjectClasses
 # Add additional functions here
 #
 
+class IMPORT_SL_MainMenu(bpy.types.Menu):
+    bl_label = "SeaLouse"
+    bl_idname = "IMPORT_SL_main_menu"
+
+    def draw(self, context):
+        self.layout.operator(ImportMgsKms.bl_idname, text="KMS File for MGS2 (.kms)")
+        self.layout.operator(ImportMgsEvm.bl_idname, text="EVM File for MGS2 (.evm)")
+        self.layout.operator(ImportMgsTri.bl_idname, text="Dump TRI textures for MGS2 (.tri)")
+        self.layout.operator(ImportMgsCtxr.bl_idname, text="Dump CTXR textures for MGS2 (.ctxr)")
+
+class EXPORT_SL_MainMenu(bpy.types.Menu):
+    bl_label = "SeaLouse"
+    bl_idname = "EXPORT_SL_main_menu"
+
+    def draw(self, context):
+        self.layout.operator(ExportMgsKms.bl_idname, text="KMS File for MGS2 (.kms)")
+        self.layout.operator(ExportMgsEvm.bl_idname, text="EVM File for MGS2 (.evm)")
+        self.layout.operator(ExportMgsTri.bl_idname, text="Edit TRI Files for MGS2 (.tri)")
+
+
 classes = {
     ImportMgsKms,
     ExportMgsKms,
@@ -49,19 +69,17 @@ classes = {
     ExportMgsTri,
     ImportMgsEvm,
     ExportMgsEvm,
-    ImportMgsCtxr
+    ImportMgsCtxr,
+    IMPORT_SL_MainMenu,
+    EXPORT_SL_MainMenu
 }.union(SLObjectClasses)
 
+
 def menu_func_import(self, context):
-    self.layout.operator(ImportMgsKms.bl_idname, text="KMS File for MGS2 (.kms)")
-    self.layout.operator(ImportMgsEvm.bl_idname, text="EVM File for MGS2 (.evm)")
-    self.layout.operator(ImportMgsTri.bl_idname, text="Dump TRI textures for MGS2 (.tri)")
-    self.layout.operator(ImportMgsCtxr.bl_idname, text="Dump CTXR textures for MGS2 (.ctxr)")
+    self.layout.menu(IMPORT_SL_MainMenu.bl_idname)
 
 def menu_func_export(self, context):
-    self.layout.operator(ExportMgsKms.bl_idname, text="KMS File for MGS2 (.kms)")
-    self.layout.operator(ExportMgsEvm.bl_idname, text="EVM File for MGS2 (.evm)")
-    self.layout.operator(ExportMgsTri.bl_idname, text="Edit TRI Files for MGS2 (.tri)")
+    self.layout.menu(EXPORT_SL_MainMenu.bl_idname)
 
 def menu_func_utils(self, context):
     self.layout.menu(SealouseObjectMenu.bl_idname)
