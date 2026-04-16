@@ -136,9 +136,15 @@ class TextureLoad:
         material.blend_method = 'OPAQUE'
         material.use_backface_culling = True
         # PrincipledBSDF and Ouput Shader
-        output = nodes.new(type='ShaderNodeOutputMaterial')
+        if "Material Output" in nodes:
+            output = nodes["Material Output"]
+        else:
+            output = nodes.new(type='ShaderNodeOutputMaterial')
         output.location = 1200,0
-        principled = nodes.new(type='ShaderNodeBsdfPrincipled')
+        if "Principled BSDF" in nodes:
+            principled = nodes["Principled BSDF"]
+        else:
+            principled = nodes.new(type='ShaderNodeBsdfPrincipled')
         principled.location = 900,0
         output_link = links.new( principled.outputs['BSDF'], output.inputs['Surface'] )
 
