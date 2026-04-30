@@ -1,4 +1,5 @@
-import os, shutil
+import os, shutil, struct
+from ..tri.tri import tri_lookup_path
 
 kmsBoneNameArray = [
     # Tuples indicate a bone that we would prefer to map differently with MGR models (I like MGR)
@@ -154,4 +155,22 @@ def changeTextureMode(self, context):
         self.texture_path = defaultTexturePaths[1]
     if self.texture_mode == 'ctxr':
         self.texture_path = defaultTexturePaths[2]
+
+def triNameFromModel(modelPath: str, modelType: str = None) -> str | None:
+    if modelType is None:
+        modelType = os.path.splitext(modelPath)[1][-3:]
+    modelType = modelType.lower()
+    if modelType not in {'kms', 'evm'} or not os.path.exists(modelPath):
+        return None
+
+    with open(modelPath, "rb") as fp:
+        fp.seek(0x10 if modelType == 'kms' else 0x20)
+        triCode: int = struct.unpack("<I", fp.read(4))[0]
+
+    with open(tri_lookup_path, "rt") as fp:
+        for line in fp.readlines():
+            if int(line.split()[1]) == triCode:
+                return line.split()[2]
+
+    return None
 

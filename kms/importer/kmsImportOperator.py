@@ -1,7 +1,7 @@
 import bpy
 import os
 from ...config import kmsConfig
-from ...util.util import replaceExt, texture_modes, changeTextureMode, defaultTexturePaths
+from ...util.util import replaceExt, texture_modes, changeTextureMode, defaultTexturePaths, triNameFromModel
 from bpy_extras.io_utils import ImportHelper
 
 class ImportMgsKms(bpy.types.Operator, ImportHelper):
@@ -46,10 +46,17 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
                 os.makedirs(extract_path, exist_ok=True)
             if self.texture_mode == 'tri':
                 if os.path.isabs(self.texture_path):
-                    tri_path = os.path.join(self.texture_path, replaceExt(kms_name, "tri"))
+                    tri_dir = self.texture_path
                 else:
-                    tri_path = os.path.join(dirname, self.texture_path, replaceExt(kms_name, "tri"))
-                
+                    tri_dir = os.path.join(dirname, self.texture_path)
+                tri_name = triNameFromModel(kms_path, "kms")
+
+                if tri_name is None or not os.path.exists(os.path.join(tri_dir, tri_name)):
+                    tri_path = os.path.join(tri_dir, replaceExt(kms_name, "tri"))
+                else:
+                    tri_path = os.path.join(tri_dir, tri_name)
+
+                print("Attempting to load TRI:", tri_path)
                 if os.path.exists(tri_path):
                     tri = TRI()
                     with open(tri_path, "rb") as f:

@@ -39,16 +39,23 @@ class ImportMgsEvm(bpy.types.Operator, ImportHelper):
             evm_path = os.path.join(self.directory, file.name)
     
             print("Loading", evm_path, "with textures", self.texture_mode)
-            dirname, kms_name = os.path.split(evm_path)
+            dirname, evm_name = os.path.split(evm_path)
             if self.texture_mode != 'none':
                 extract_path = os.path.join(dirname, "sealouse_extract")
                 os.makedirs(extract_path, exist_ok=True)
             if self.texture_mode == 'tri':
                 if os.path.isabs(self.texture_path):
-                    tri_path = os.path.join(self.texture_path, replaceExt(kms_name, "tri"))
+                    tri_dir = self.texture_path
                 else:
-                    tri_path = os.path.join(dirname, self.texture_path, replaceExt(kms_name, "tri"))
-    
+                    tri_dir = os.path.join(dirname, self.texture_path)
+                tri_name = triNameFromModel(evm_path, "evm")
+
+                if tri_name is None or not os.path.exists(os.path.join(tri_dir, tri_name)):
+                    tri_path = os.path.join(tri_dir, replaceExt(evm_name, "tri"))
+                else:
+                    tri_path = os.path.join(tri_dir, tri_name)
+
+                print("Attempting to load TRI:", tri_path)
                 if os.path.exists(tri_path):
                     tri = TRI()
                     with open(tri_path, "rb") as f:

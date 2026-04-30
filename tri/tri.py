@@ -261,13 +261,13 @@ class TRIEntry:
             clutHeight = 16
             size = texWidth * texHeight
             texBuffer = readTexPSMT8(self.registerInfo2.tbp0, self.registerInfo2.tbw, texX, texY, texWidth, texHeight, textureBuffer)
-            print("PSM 0x13")
+            # print("PSM 0x13")
         elif self.registerInfo2.psm == 0x14:
             clutWidth = 8
             clutHeight = 2
             size = texWidth * texHeight // 2
             texBuffer = readTexPSMT4(self.registerInfo2.tbp0, self.registerInfo2.tbw, texX, texY, texWidth, texHeight, textureBuffer)
-            print("PSM 0x14, alpha", self.registerInfo2.has_alpha)
+            # print("PSM 0x14, alpha", self.registerInfo2.has_alpha)
         else:
             print(f"Failed to export texture {self.texID}.tga: Unrecognized PSM {hex(self.registerInfo2.psm)}")
             return None
@@ -280,8 +280,8 @@ class TRIEntry:
             if all([x == 0 for x in specialClutBuffer]):
                 print("Invalid clut! CBP: %d, CSAX: %d, CSAY: %d" % (self.registerInfo2.cbp, self.registerInfo2.csax, self.registerInfo2.csay))
                 specialClutBuffer = readTexPSMCT32(0, 1, 0, 0, clutWidth, clutHeight, clutBuffer)
-            else:
-                print("Valid clut: CBP: %d, CSAX: %d, CSAY: %d" % (self.registerInfo2.cbp, self.registerInfo2.csax, self.registerInfo2.csay))
+            # else:
+            #     print("Valid clut: CBP: %d, CSAX: %d, CSAY: %d" % (self.registerInfo2.cbp, self.registerInfo2.csax, self.registerInfo2.csay))
         else:
             #specialClutBuffer = [0] * (1024 * 1024)
             print("Failed to export texture %d.tga: Unrecognized CPSM %d CSM %d" % (self.texID, self.registerInfo2.cpsm, self.registerInfo2.csm))
@@ -564,7 +564,7 @@ def readTexPSMT4(dbp: int, dbw: int, dsax: int, dsay: int, rrw: int, rrh: int, h
 def paintPixels(clut: List[int], pixels: List[int], width: int, height: int) -> bytes:
     sizeOut = width * height * 4
     texture = b""
-    print("There are %d pixels" % len(pixels))
+    # print("There are %d pixels" % len(pixels))
     clut = [list(struct.unpack("BBBB", struct.pack("<I", x))) for x in clut] # RGBA
     pixels = [list(struct.unpack("BBBB", struct.pack("<I", x))) for x in pixels]
     for y in range(height):
@@ -630,3 +630,5 @@ def unswizzleClut(buffer: List[int]):
         for k in range(8):
             buffer[i*8+k], buffer[j*8+k] = buffer[j*8+k], buffer[i*8+k]
     return buffer
+
+tri_lookup_path = path.join(path.dirname(__file__), "trimapping.txt")

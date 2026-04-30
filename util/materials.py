@@ -134,7 +134,8 @@ class TextureLoad:
         links = matHelper.links
         # Render properties (TODO: User-defined? See blend method below also)
         material.blend_method = 'OPAQUE'
-        material.use_backface_culling = True
+        # material.use_backface_culling = (flag & 0x4) != 0
+        material.use_backface_culling = False
         # PrincipledBSDF and Ouput Shader
         if "Material Output" in nodes:
             output = nodes["Material Output"]
@@ -149,7 +150,7 @@ class TextureLoad:
         output_link = links.new( principled.outputs['BSDF'], output.inputs['Surface'] )
 
         colorMap = self.get_texture(colorId)
-        isAlphaBlended = colorMap is not None and colorMapName.find("alp") >= 0 and colorMapName.find("ovl") >= 0
+        isAlphaBlended = colorMap is not None and colorMapName.find("alp") >= 0 # and colorMapName.find("ovl") >= 0
         if colorMap is not None:
             color_image = nodes.new(type='ShaderNodeTexImage')
             color_image.location = 0,0
@@ -166,6 +167,8 @@ class TextureLoad:
             if isAlphaBlended:
                 # May also be user-defined
                 material.blend_method = 'BLEND'
+                material.use_backface_culling = False
+                material.show_transparent_back = True
                 output_alpha = color_image.outputs['Alpha']
                 if self.ctxr_dir:
                     output_alpha = matHelper.make_alpha_multiplier(color_image).outputs[0]
