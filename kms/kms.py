@@ -15,7 +15,7 @@ class KMS:
         self.header = KMSHeader().fromFile(file)
         
         self.meshes = [
-            KMSMesh().fromFile(file)
+            KMSMesh().fromFile(file, self.header.isPs2)
             for _ in range(self.header.numMesh)
         ]
         
@@ -150,6 +150,8 @@ class KMSHeader:
     minPos: KMSVector3
     maxPos: KMSVector3
     pos: KMSVector3
+
+    isPs2: bool
     
     def __init__(self):
         self.kmsType = 0
@@ -170,6 +172,10 @@ class KMSHeader:
         self.minPos.fromFile(file)
         self.maxPos.fromFile(file)
         self.pos.fromFile(file)
+        self.isPs2 = False
+        if self.strcode == 0 and self.pad != 0:
+            self.isPs2 = True
+            self.strcode = self.pad
         
         return self
     
@@ -230,7 +236,7 @@ class KMSMesh:
     pos: KMSVector3
     parentInd: int
     vertexGroupOffset: int
-    pad: List[int] # 7 items
+    pad: bytes
     
     vertexGroups: List[KMSVertexGroup]
     parent: KMSMesh | None
@@ -243,24 +249,27 @@ class KMSMesh:
         self.pos = KMSVector3()
         self.parentInd = -1
         self.vertexGroupOffset = 0
-        self.pad = [0] * 7
+        self.pad = b""
         self.vertexGroups = []
         self.parent = None
     
-    def fromFile(self, file: BufferedReader):
+    def fromFile(self, file: BufferedReader, isPs2: bool = False):
         self.flag, self.numVertexGroup = struct.unpack("<II", file.read(0x8))
         self.minPos.fromFile(file)
         self.maxPos.fromFile(file)
         self.pos.fromFile(file)
         self.parentInd, self.vertexGroupOffset = struct.unpack("<iI", file.read(0x8))
-        self.pad = list(struct.unpack("<7I", file.read(0x1C)))
+        if isPs2:
+            self.pad = file.read(0xC)
+        else:
+            self.pad = file.read(0x1C)
         
         curPos = file.tell()
         
         file.seek(self.vertexGroupOffset)
         
         self.vertexGroups = [
-            KMSVertexGroup().fromFile(file)
+            KMSVertexGroup().fromFile(file, isPs2)
             for _ in range(self.numVertexGroup)
         ]
         
@@ -297,7 +306,7 @@ class KMSVertexGroup:
     uv2Offset: int
     pad7: int
     uv3Offset: int
-    pad8: List[int] # 7 items
+    pad8: bytes
     
     vertices: List[KMSVertex]
     normals: List[KMSNormal]
@@ -323,7 +332,7 @@ class KMSVertexGroup:
         self.uv2Offset = 0
         self.pad7 = 0
         self.uv3Offset = 0
-        self.pad8 = [0] * 7
+        self.pad8 = b""
         
         self.vertices = []
         self.normals = []
@@ -331,13 +340,19 @@ class KMSVertexGroup:
         self.uvs2 = None
         self.uvs3 = None
     
-    def fromFile(self, file: BufferedReader):
-        self.flag, self.numVertex, self.colorMap, self.pad, \
-        self.specularMap, self.pad2, self.environmentMap, self.pad3, \
-        self.vertexOffset, self.pad4, self.normalOffset, self.pad5, \
-        self.uvOffset, self.pad6, self.uv2Offset, self.pad7, \
-        self.uv3Offset = struct.unpack("<17I", file.read(0x44))
-        self.pad8 = list(struct.unpack("<7I", file.read(0x1C)))
+    def fromFile(self, file: BufferedReader, isPs2: bool = False):
+        if isPs2:
+          self.flag, self.numVertex, self.colorMap, self.specularMap, \
+          self.environmentMap, self.vertexOffset, self.normalOffset, self.uvOffset, \
+          self.uv2Offset, self.uv3Offset = struct.unpack("<10I", file.read(0x28))
+          self.pad8 = file.read(0x8)
+        else:
+          self.flag, self.numVertex, self.colorMap, self.pad, \
+          self.specularMap, self.pad2, self.environmentMap, self.pad3, \
+          self.vertexOffset, self.pad4, self.normalOffset, self.pad5, \
+          self.uvOffset, self.pad6, self.uv2Offset, self.pad7, \
+          self.uv3Offset = struct.unpack("<17I", file.read(0x44))
+          self.pad8 = file.read(0x1C)
         
         curPos = file.tell()
         
