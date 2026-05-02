@@ -249,7 +249,7 @@ class KMSMesh:
         self.pos = KMSVector3()
         self.parentInd = -1
         self.vertexGroupOffset = 0
-        self.pad = b""
+        self.pad = bytes(0x1C)
         self.vertexGroups = []
         self.parent = None
     
@@ -284,8 +284,7 @@ class KMSMesh:
         self.pos.writeToFile(file)
         file.write(struct.pack("<iI", \
         self.parentInd, self.vertexGroupOffset))
-        for i in range(7):
-            file.write(struct.pack("<I", self.pad[i]))
+        file.write(self.pad)
 
 
 class KMSVertexGroup:
@@ -332,7 +331,7 @@ class KMSVertexGroup:
         self.uv2Offset = 0
         self.pad7 = 0
         self.uv3Offset = 0
-        self.pad8 = b""
+        self.pad8 = bytes(0x1C)
         
         self.vertices = []
         self.normals = []
@@ -404,7 +403,7 @@ class KMSVertexGroup:
         self.vertexOffset, self.pad4, self.normalOffset, self.pad5, \
         self.uvOffset, self.pad6, self.uv2Offset, self.pad7, \
         self.uv3Offset))
-        file.write(struct.pack("<7I", 0, 0, 0, 0, 0, 0, 0))
+        file.write(bytes(0x1C))
         return
 
 
