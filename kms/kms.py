@@ -173,7 +173,7 @@ class KMSHeader:
         self.maxPos.fromFile(file)
         self.pos.fromFile(file)
         self.isPs2 = False
-        if self.strcode == 0 and self.pad != 0:
+        if self.pad != 0:
             self.isPs2 = True
             self.strcode = self.pad
         
