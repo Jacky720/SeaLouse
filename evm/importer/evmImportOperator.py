@@ -2,7 +2,7 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 import os
 from ...config import evmConfig
-from ...util.util import replaceExt, texture_modes, changeTextureMode, defaultTexturePaths
+from ...util.util import replaceExt, texture_modes, changeTextureMode, defaultTexturePaths, triNameFromModel
 
 class ImportMgsEvm(bpy.types.Operator, ImportHelper):
     '''Load an MGS2 EVM File.'''
