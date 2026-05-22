@@ -57,7 +57,8 @@ class ExportMgsKms(bpy.types.Operator, ExportHelper):
         
         create_bak(self.filepath, self.kms_bak)
         print("Saving", self.filepath)
-        kms_exporter.main(self.filepath, collection.name, ctxr_path, self.ctxr_bak, isPs2 == 'ps2')
+        kms_exporter.main(self.filepath, collection.name, \
+            ctxr_path, self.ctxr_bak, self.isPs2 == 'ps2')
         print('KMS COMPLETE :)')
         
         # CMDL export
@@ -87,6 +88,7 @@ class ExportMgsKms(bpy.types.Operator, ExportHelper):
         if self.make_ctxr:
             col.prop(self, "ctxr_path")
             col.prop(self, "ctxr_bak")
+        col.prop(self, "isPs2")
 
     def makeabs(self, path: str) -> str:
         if os.path.isabs(path):
