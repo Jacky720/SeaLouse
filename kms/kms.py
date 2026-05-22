@@ -7,8 +7,8 @@ class KMS:
     header: KMSHeader
     meshes: List[KMSMesh]
     
-    def __init__(self):
-        self.header = KMSHeader()
+    def __init__(self, isPs2: bool = False):
+        self.header = KMSHeader(isPs2)
         self.meshes = []
     
     def fromFile(self, file: BufferedReader):
@@ -60,12 +60,13 @@ class KMS:
         file.seek(0)
         
         self.header.writeToFile(file)
+        isPs2: bool = self.header.isPs2
         
         curVertexGroupOffset = firstVertexGroupOffset
         for mesh in self.meshes:
             mesh.vertexGroupOffset = curVertexGroupOffset
             curVertexGroupOffset += 0x60 * mesh.numVertexGroup
-            mesh.writeToFile(file)
+            mesh.writeToFile(file, isPs2)
         
         curExDataOffset = firstExDataOffset
         for mesh in self.meshes:
@@ -109,7 +110,7 @@ class KMS:
                 
         for mesh in self.meshes:
             for vertexGroup in mesh.vertexGroups:
-                vertexGroup.writeToFile(file)
+                vertexGroup.writeToFile(file, isPs2)
         
         for mesh in self.meshes:
             for vertexGroup in mesh.vertexGroups:
@@ -153,7 +154,7 @@ class KMSHeader:
 
     isPs2: bool
     
-    def __init__(self):
+    def __init__(self, isPs2: bool = False):
         self.kmsType = 0
         self.numBones = 0
         self.numMesh = 0
@@ -164,6 +165,7 @@ class KMSHeader:
         self.minPos = KMSVector3()
         self.maxPos = KMSVector3()
         self.pos = KMSVector3()
+        self.isPs2 = isPs2
     
     def fromFile(self, file: BufferedReader):
         self.kmsType, self.numBones, self.numMesh, self.pad, \
@@ -180,9 +182,13 @@ class KMSHeader:
         return self
     
     def writeToFile(self, file: BufferedWriter):
+        # strcode changes position in MC files, otherwise same
+        ogstrcode: int = self.strcode if self.isPs2 else 0
+        mcstrcode: int = 0 if self.isPs2 else self.strcode
+        
         file.write(struct.pack("<IIiIIII", \
-        self.kmsType, self.numBones, self.numMesh, self.pad, \
-        self.strcode, self.pad2, self.pad3))
+        self.kmsType, self.numBones, self.numMesh, ogstrcode, \
+        mcstrcode, self.pad2, self.pad3))
         self.minPos.writeToFile(file)
         self.maxPos.writeToFile(file)
         self.pos.writeToFile(file)
@@ -276,7 +282,7 @@ class KMSMesh:
         file.seek(curPos)
         return self
     
-    def writeToFile(self, file: BufferedWriter):
+    def writeToFile(self, file: BufferedWriter, isPs2: bool = False):
         file.write(struct.pack("<II", \
         self.flag, self.numVertexGroup))
         self.minPos.writeToFile(file)
@@ -284,7 +290,10 @@ class KMSMesh:
         self.pos.writeToFile(file)
         file.write(struct.pack("<iI", \
         self.parentInd, self.vertexGroupOffset))
-        file.write(self.pad)
+        if isPs2:
+            file.write(bytes(0xC))
+        else:
+            file.write(self.pad)
 
 
 class KMSVertexGroup:
@@ -397,13 +406,19 @@ class KMSVertexGroup:
         file.seek(curPos)
         return self
     
-    def writeToFile(self, file: BufferedWriter):
-        file.write(struct.pack("<17I", self.flag, self.numVertex, self.colorMap, self.pad, \
-        self.specularMap, self.pad2, self.environmentMap, self.pad3, \
-        self.vertexOffset, self.pad4, self.normalOffset, self.pad5, \
-        self.uvOffset, self.pad6, self.uv2Offset, self.pad7, \
-        self.uv3Offset))
-        file.write(bytes(0x1C))
+    def writeToFile(self, file: BufferedWriter, isPs2: bool = False):
+        if isPs2:
+            file.write(struct.pack("<10I", self.flag, self.numVertex, self.colorMap, self.specularMap, \
+            self.environmentMap, self.vertexOffset, self.normalOffset, self.uvOffset, \
+            self.uv2Offset, self.uv3Offset))
+            file.write(bytes(0x8))
+        else:
+            file.write(struct.pack("<17I", self.flag, self.numVertex, self.colorMap, self.pad, \
+            self.specularMap, self.pad2, self.environmentMap, self.pad3, \
+            self.vertexOffset, self.pad4, self.normalOffset, self.pad5, \
+            self.uvOffset, self.pad6, self.uv2Offset, self.pad7, \
+            self.uv3Offset))
+            file.write(bytes(0x1C))
         return
 
 

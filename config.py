@@ -22,7 +22,9 @@ kmsConfig = {
     "export.cmdl_bak": 1,
     "export.make_ctxr": False,
     "export.ctxr_path": "../../../textures/flatlist/ovr_stm/_win/",
-    "export.ctxr_bak": 0
+    "export.ctxr_bak": 0,
+    # 0 = PS2/original padding, 1 = Master Collection padding
+    "export.is_ps2": 1
 }
 triConfig = {
     "import.bulk": False,

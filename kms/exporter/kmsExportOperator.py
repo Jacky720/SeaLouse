@@ -25,6 +25,8 @@ class ExportMgsKms(bpy.types.Operator, ExportHelper):
     ctxr_path: props.StringProperty(name="CTXR Path", default=kmsConfig['export.ctxr_path'])
     ctxr_bak: props.EnumProperty(name="Backup CTXR", items=BakFileModes, default=kmsConfig['export.ctxr_bak'])
     
+    isPs2: props.EnumProperty(name="Export Type", items=[('ps2', 'Original', 'Original file (PS2, leaked source)'), ('mc', 'Master Collection', 'File with additional padding (Master Collection)')], default=kmsConfig['export.is_ps2'])
+    
     # Override to set default file name
     def invoke(self, context, _event):
         if not self.filepath:
@@ -55,7 +57,7 @@ class ExportMgsKms(bpy.types.Operator, ExportHelper):
         
         create_bak(self.filepath, self.kms_bak)
         print("Saving", self.filepath)
-        kms_exporter.main(self.filepath, collection.name, ctxr_path, self.ctxr_bak)
+        kms_exporter.main(self.filepath, collection.name, ctxr_path, self.ctxr_bak, isPs2 == 'ps2')
         print('KMS COMPLETE :)')
         
         # CMDL export

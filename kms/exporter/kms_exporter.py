@@ -34,8 +34,10 @@ def kmsUvFromLayerAndLoop(mesh, uvLayer: int, loopIndex: int) -> KMSUv:
     return KMSUv(uv.x * 4096, (1 - uv.y) * 4096)
 
 
-def main(kms_file: str, collection_name: str, ctxr_dir: str = None, ctxr_bak: str = 'never'):
-    kms = KMS()
+def main(kms_file: str, collection_name: str, \
+         ctxr_dir: str = None, ctxr_bak: str = 'never', \
+         isPs2: bool = False):
+    kms = KMS(isPs2)
     
     collection = bpy.data.collections[collection_name]
     
