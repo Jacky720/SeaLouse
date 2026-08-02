@@ -200,6 +200,7 @@ class CMDLNrmData(CMDLSectionData): # Normals
     
     def __init__(self):
         self.data = []
+        self.renormalize = True
     
     def fromFile(self, file: BufferedReader, fullSize: int):
         vertCount = fullSize // self.size
@@ -238,15 +239,15 @@ class CMDLNrmData(CMDLSectionData): # Normals
             if isnan(vert[0]): vert[0] = 0
             if isnan(vert[1]): vert[1] = 0
             if isnan(vert[2]): vert[2] = 0
-            vert_total = (vert[0]**2 + vert[1]**2 + vert[2]**2)**0.5
-            if vert_total == 0.0:
-                vert_total = 1.0
-                vert[0] = 1.0
-            vert[0] /= vert_total; vert[1] /= vert_total; vert[2] /= vert_total
-            # I know where this code came from, it was ChatGPT when told to reverse that other code
-            nx = int(round(vert[0] * float((1<<10)-1)))
-            ny = int(round(vert[1] * float((1<<10)-1)))
-            nz = int(round(vert[2] * float((1<<9 )-1)))
+            if self.renormalize:
+                # glass materials have a valid zero normal
+                vert_total = (vert[0]**2 + vert[1]**2 + vert[2]**2)**0.5
+                if vert_total != 0.0:
+                    vert[0] /= vert_total; vert[1] /= vert_total; vert[2] /= vert_total
+            # int() matches c++ uint32 cast, truncating instead of rounding.
+            nx = int(vert[0] * float((1<<10)-1))
+            ny = int(vert[1] * float((1<<10)-1))
+            nz = int(vert[2] * float((1<<9 )-1))
             if nx < 0:
                 nx += (1 << 10)
                 nx |= 1 << 10

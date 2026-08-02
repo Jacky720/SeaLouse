@@ -3,23 +3,62 @@ from io import BufferedReader, BufferedWriter
 import struct
 from os import path
 
+# Ensure blender's python install has access to PIL
+try:
+    from PIL import Image
+except ImportError:
+    import subprocess, sys
+    print("SeaLouse: Pillow not found, attempting to install it via pip...")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "Pillow"])
+        from PIL import Image
+        print("SeaLouse: Pillow installed successfully.")
+    except Exception as e:
+        Image = None
+        print(f"SeaLouse: Couldn't install Pillow automatically ({e}).")
+        print(f"SeaLouse: TRI texture extraction needs it - install manually with: {sys.executable} -m pip install Pillow")
+
+
+# PS2 .tri files pack entries into 0xA0 bytes with GsTex0 @0x50;
+# MC .tri files use 0xC0-bytes with GsTex0 @0x70 instead -
+# entry 0's registerInfo1 is a reliable version fingerprint
+# Ported from Afevis's MGS-Tri-Dumper
+_FORMAT_MAGIC = bytes([0x01, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70, 0xEE, 0xEE])
+
+def _detectIsPS2(file: BufferedReader) -> bool:
+    returnPos = file.tell()
+    file.seek(0x40)
+    ps2Chunk = file.read(10)
+    file.seek(0x60)
+    mcChunk = file.read(10)
+    file.seek(returnPos)
+    if ps2Chunk == _FORMAT_MAGIC:
+        return True
+    if mcChunk == _FORMAT_MAGIC:
+        return False
+    print("Warning: couldn't detect TRI format (not PS2 or MC), assuming MC")
+    return False
+
 
 class TRI:
     header: TRIHeader
     textures: List[TRIEntry]
-    
+    isPS2: bool
+
     def __init__(self):
         self.header = TRIHeader()
         self.textures = []
-    
+        self.isPS2 = False
+
     def fromFile(self, file: BufferedReader):
         self.header.fromFile(file)
-        
+        self.isPS2 = _detectIsPS2(file)
+
         self.textures = [
-            TRIEntry().fromFile(file)
+            TRIEntry().fromFile(file, self.isPS2)
             for _ in range(self.header.numTexture)
         ]
-        
+
         return self
     
     def dumpTextures(self, extract_dir: str):
@@ -27,7 +66,7 @@ class TRI:
         clutBuffer = self.header.initPartialProcessBuffer(1)
         
         for entry in self.textures:
-            print("Dumping texture %d.tga" % entry.texID)
+            print("Dumping texture %06x.png" % entry.texID)
             entry.dumpTexture(extract_dir, textureBuffer, clutBuffer)
     
     def dumpById(self, extract_dir: str, texID: int):
@@ -227,10 +266,12 @@ class TRIEntry:
         self.pad5 = 0
         
     
-    def fromFile(self, file: BufferedReader):
+    def fromFile(self, file: BufferedReader, isPS2: bool = False):
         self.uOffset, self.vOffset, self.uScale, self.vScale, \
         self.texID = struct.unpack("<ffffI", file.read(0x14))
-        self.pad = list(struct.unpack("<11I", file.read(0x2C)))
+        # PS2 (0xA0) = 3 pad, MC (0xC0) = 11
+        self.pad = list(struct.unpack("<3I", file.read(0xC))) if isPS2 \
+            else list(struct.unpack("<11I", file.read(0x2C)))
         self.unknownA, self.unknownB, self.unknownC, self.pad2, \
         self.unknownD, self.unknownE, self.unknownF, self.pad3 \
         = struct.unpack("<8I", file.read(0x20))
@@ -269,7 +310,7 @@ class TRIEntry:
             texBuffer = readTexPSMT4(self.registerInfo2.tbp0, self.registerInfo2.tbw, texX, texY, texWidth, texHeight, textureBuffer)
             # print("PSM 0x14, alpha", self.registerInfo2.has_alpha)
         else:
-            print(f"Failed to export texture {self.texID}.tga: Unrecognized PSM {hex(self.registerInfo2.psm)}")
+            print(f"Failed to export texture {self.texID}.png: Unrecognized PSM {hex(self.registerInfo2.psm)}")
             return None
         
         if self.registerInfo2.cpsm == 0 and self.registerInfo2.csm == 0:
@@ -284,24 +325,24 @@ class TRIEntry:
             #     print("Valid clut: CBP: %d, CSAX: %d, CSAY: %d" % (self.registerInfo2.cbp, self.registerInfo2.csax, self.registerInfo2.csay))
         else:
             #specialClutBuffer = [0] * (1024 * 1024)
-            print("Failed to export texture %d.tga: Unrecognized CPSM %d CSM %d" % (self.texID, self.registerInfo2.cpsm, self.registerInfo2.csm))
+            print("Failed to export texture %d.png: Unrecognized CPSM %d CSM %d" % (self.texID, self.registerInfo2.cpsm, self.registerInfo2.csm))
             return None
-        
+
+        if Image is None:
+            print("Failed to export texture %d.png: Pillow isn't installed" % self.texID)
+            return None
+
         pixels = paintPixels(specialClutBuffer, texBuffer, texWidth, texHeight)
-        
+
         if pixels is None:
-            print("Failed to export texture %d.tga: paintPixels error" % self.texID)
+            print("Failed to export texture %d.png: paintPixels error" % self.texID)
             return None
-        
-        out_path = path.join(extract_dir, "%d.tga" % self.texID)
-        
-        with open(out_path, "wb") as f:
-            f.write(b"\x00\x00\x02\x00") # magic
-            f.write(b"\x00\x00\x00\x00\x00\x00\x00\x00") # padding
-            f.write(struct.pack("<hh", texWidth, texHeight))
-            f.write(b"\x20\x20") # also magic I guess
-            f.write(pixels)
-        
+
+        out_path = path.join(extract_dir, "%06x.png" % self.texID)
+
+        image = Image.frombytes("RGBA", (texWidth, texHeight), pixels)
+        image.save(out_path, format="PNG", optimize=False)
+
         return out_path
         
     
@@ -310,7 +351,7 @@ class TRIEntry:
         self.uOffset, self.vOffset, self.uScale, self.vScale, \
         self.texID))
         
-        for i in range(11):
+        for i in range(len(self.pad)):
             file.write(struct.pack("<I", self.pad[i]))
         file.write(struct.pack("<8I", \
         self.unknownA, self.unknownB, self.unknownC, self.pad2, \
@@ -516,7 +557,6 @@ def mergeFromFourBits(vals):
 def readTexPSMT4(dbp: int, dbw: int, dsax: int, dsay: int, rrw: int, rrh: int, halfBuffer: List[int]):
     dbw >>= 1
     dbp <<= 6
-    # TODO: make this the 4-bit version
     i = 0
     outBuf = [([0] * 8) for x in range(rrh * rrw)]
     for y in range(dsay, dsay + rrh):
@@ -572,13 +612,12 @@ def paintPixels(clut: List[int], pixels: List[int], width: int, height: int) -> 
             pixelPos = x + y * width
             pixel = pixels[pixelPos // 4][pixelPos % 4]
             clutPix = clut[pixel]
-            #print(clutPix[2], clutPix[1], clutPix[0], ((clutPix[3] * 255) // 0x80))
             if clutPix[3] > 0x80:  # Invalid clut
                 print("paintPixels: Invalid alpha in palette at %d, %d" % (x, y))
                 return None
+            # keep raw PS2 alpha (0-0x80, 0x80=opaque)
             texture += struct.pack("BBBB", \
-            clutPix[2], clutPix[1], clutPix[0], (clutPix[3] * 0xff) // 0x80)
-            #clutPix[2], clutPix[1], clutPix[0], clutPix[3])
+            clutPix[0], clutPix[1], clutPix[2], clutPix[3])
     return texture
 
 
@@ -632,3 +671,4 @@ def unswizzleClut(buffer: List[int]):
     return buffer
 
 tri_lookup_path = path.join(path.dirname(__file__), "trimapping.txt")
+transcache_lookup_path = path.join(path.dirname(__file__), "transcachemapping.txt")

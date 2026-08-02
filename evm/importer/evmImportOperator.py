@@ -2,7 +2,7 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 import os
 from ...config import evmConfig
-from ...util.util import replaceExt, texture_modes, changeTextureMode, defaultTexturePaths, triNameFromModel
+from ...util.util import replaceExt, texture_modes, changeTextureMode, defaultTexturePaths, triNameFromModel, triPathFromHashFallback
 
 class ImportMgsEvm(bpy.types.Operator, ImportHelper):
     '''Load an MGS2 EVM File.'''
@@ -55,6 +55,11 @@ class ImportMgsEvm(bpy.types.Operator, ImportHelper):
                 else:
                     tri_path = os.path.join(tri_dir, tri_name)
 
+                if not os.path.exists(tri_path):
+                    hashed_path = triPathFromHashFallback(evm_path, "evm")
+                    if hashed_path is not None:
+                        tri_path = hashed_path
+
                 print("Attempting to load TRI:", tri_path)
                 if os.path.exists(tri_path):
                     tri = TRI()
@@ -69,8 +74,9 @@ class ImportMgsEvm(bpy.types.Operator, ImportHelper):
                 else:
                     evm_importer.main(evm_path, os.path.join(dirname, self.texture_path), self.texture_overwrite, self.merge_material_slots)
             else:
-                evm_importer.main(evm_path, merge_material_slots = self.merge_material_slots)
-            
+                evm_importer.main(evm_path, merge_material_slots = self.merge_material_slots,
+                                   tri_dir = tri_dir if self.texture_mode == 'tri' else None)
+
         return {'FINISHED'}
         
     def draw(self, context):

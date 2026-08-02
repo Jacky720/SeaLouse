@@ -19,6 +19,21 @@ def padOffset(offset: int, pad_amount: int = 0x10):
         return offset
     return offset - (offset % pad_amount) + pad_amount
 
+# DG_EVMTYPE_LARGE = model should pass through raw sclae instead of /16. 
+# used by:
+#   demo_lope02
+#   sol_snakearm_2_mh_mt
+#   sol_snakearm_2_mh_mt_stage_d080p06
+#   sol_snakearm_mh_mt
+#   sol_snakearm_mh_mt_stage_d070px9
+#   sol_snakearm_mh_mt_stage_d080p01
+#   w24c0_flag_mh
+DG_EVMTYPE_LARGE = 0x00000001
+
+
+def evmPosScale(flag: int) -> float:
+    return 1.0 if (flag & DG_EVMTYPE_LARGE) else 1.0 / 16.0
+
 
 class EVM:
     header: EVMHeader
@@ -44,7 +59,7 @@ class EVM:
         file.seek(self.header.meshOffset)
         
         self.meshes = [
-            EVMMesh().fromFile(file)
+            EVMMesh().fromFile(file, self.header.isPS2)
             for _ in range(self.header.numMeshes)
         ]
         
@@ -160,6 +175,23 @@ class EVM:
             file.seek(returnPos)
 
 
+def _detectIsPS2Evm(file: BufferedReader, numBones: int) -> bool:
+    # PS2 EVMHeader is 0x30 bytes (no separate pad + trailing pad2[3] MC carries),
+    # Called with file positioned right after minPos/maxPos (header offset 0x20).
+    returnPos = file.tell()
+    file.seek(returnPos + 0x0C)  # 0x20 + 0x0C = 0x2C
+    ps2MeshOffset = struct.unpack("<I", file.read(4))[0]
+    file.seek(returnPos + 0x10)  # 0x20 + 0x10 = 0x30
+    mcMeshOffset = struct.unpack("<I", file.read(4))[0]
+    file.seek(returnPos)
+    if ps2MeshOffset == 0x30 + numBones * 0x40:
+        return True
+    if mcMeshOffset == 0x40 + numBones * 0x40:
+        return False
+    print("Warning: couldn't detect EVM format (not PS2 or MC), assuming MC")
+    return False
+
+
 class EVMHeader:
     fingerIndex: int
     numBones: int
@@ -171,7 +203,8 @@ class EVMHeader:
     numMeshes: int
     meshOffset: int
     pad2: List[int] # 3 items
-    
+    isPS2: bool
+
     def __init__(self):
         self.fingerIndex = 0
         self.numBones = 0
@@ -182,15 +215,25 @@ class EVMHeader:
         self.flag = 0
         self.numMeshes = 0
         self.pad2 = [0, 0, 0]
-    
+        self.isPS2 = False
+
     def fromFile(self, file: BufferedReader):
         self.fingerIndex, self.numBones = struct.unpack("<II", file.read(8))
         self.minPos.fromFile(file)
         self.maxPos.fromFile(file)
-        self.strcode, self.pad, self.flag, self.numMeshes, \
-        self.meshOffset = struct.unpack("<IIIiI", file.read(0x14))
-        readPad(self.pad2, file)
-        
+        self.isPS2 = _detectIsPS2Evm(file, self.numBones)
+        if self.isPS2:
+            #ps2: size 0x30
+            self.flag, self.strcode, self.numMeshes, \
+            self.meshOffset = struct.unpack("<IIiI", file.read(0x10))
+            self.pad = 0
+            self.pad2 = [0, 0, 0]
+        else:
+            #mc: size 0x40
+            self.strcode, self.pad, self.flag, self.numMeshes, \
+            self.meshOffset = struct.unpack("<IIIiI", file.read(0x14))
+            readPad(self.pad2, file)
+
         return self
     
     def writeToFile(self, file: BufferedWriter):
@@ -371,16 +414,29 @@ class EVMMesh:
         self.uvs3 = None
         self.weights = None
     
-    def fromFile(self, file: BufferedReader):
-        self.flag, self.pad, self.colorMap, self.pad2, \
-        self.specularMap, self.pad3, self.environmentMap, self.pad4, \
-        self.numVertex, self.numSkin = struct.unpack("<10I", file.read(0x28))
-        self.skinningTable = list(struct.unpack("<8B", file.read(8)))
-        self.vertexOffset, self.pad5, self.normalOffset, self.pad6, \
-        self.uvOffset, self.pad7, self.uv2Offset, self.pad8, \
-        self.uv3Offset, self.pad9, self.weightOffset \
-        = struct.unpack("<11I", file.read(0x2C))
-        readPad(self.pad10, file)
+    def fromFile(self, file: BufferedReader, isPS2: bool = False):
+        if isPS2:
+            # size 0x40
+            self.flag, self.colorMap, self.specularMap, self.environmentMap, \
+            self.numVertex, self.numSkin = struct.unpack("<6I", file.read(0x18))
+            self.skinningTable = list(struct.unpack("<8B", file.read(8)))
+            self.vertexOffset, self.normalOffset, self.uvOffset, self.uv2Offset, \
+            self.uv3Offset, self.weightOffset = struct.unpack("<6I", file.read(0x18))
+            file.read(8)  # trailing pad, pad2
+            self.pad = self.pad2 = self.pad3 = self.pad4 = 0
+            self.pad5 = self.pad6 = self.pad7 = self.pad8 = self.pad9 = 0
+            self.pad10 = [0] * 5
+        else:
+            # MC: size 0x70, pad after every field
+            self.flag, self.pad, self.colorMap, self.pad2, \
+            self.specularMap, self.pad3, self.environmentMap, self.pad4, \
+            self.numVertex, self.numSkin = struct.unpack("<10I", file.read(0x28))
+            self.skinningTable = list(struct.unpack("<8B", file.read(8)))
+            self.vertexOffset, self.pad5, self.normalOffset, self.pad6, \
+            self.uvOffset, self.pad7, self.uv2Offset, self.pad8, \
+            self.uv3Offset, self.pad9, self.weightOffset \
+            = struct.unpack("<11I", file.read(0x2C))
+            readPad(self.pad10, file)
         
         curPos = file.tell()
         
@@ -457,9 +513,9 @@ class EVMVertex:
     isFace: bool
     
     def __init__(self, x=0, y=0, z=0, isFace=False):
-        self.x = int(x)
-        self.y = int(y)
-        self.z = int(z)
+        self.x = round(x)
+        self.y = round(y)
+        self.z = round(z)
         self.flags = 0x8fff
         self.isFace = isFace
     
@@ -489,9 +545,9 @@ class EVMNormal:
     isFace: bool
     
     def __init__(self, x=0, y=0, z=0):
-        self.x = int(x)
-        self.y = int(y)
-        self.z = int(z)
+        self.x = round(x)
+        self.y = round(y)
+        self.z = round(z)
         self.pad = 0
     
     def fromFile(self, file: BufferedReader):
@@ -509,8 +565,8 @@ class EVMUv:
     unknown: int
     
     def __init__(self, u=0, v=0):
-        self.u = int(u)
-        self.v = int(v)
+        self.u = round(u)
+        self.v = round(v)
         self.unknown = 0x1000
     
     def fromFile(self, file: BufferedReader):
