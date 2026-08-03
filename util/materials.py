@@ -1,8 +1,10 @@
 import bpy
 import os
+import glob
 from math import radians
 from ..ctxr.ctxr import DDS, CTXR, ctxr_lookup_path
-from .util import replaceExt, stripAllExt, create_bak
+from ..tri.tri import TRI, transcache_lookup_path
+from .util import replaceExt, stripAllExt, create_bak, gv_strcode
 
 class MaterialHelper:
     material: bpy.types.Material
@@ -50,21 +52,25 @@ class MaterialHelper:
     
     @staticmethod
     def get_unique_id(flag: int, colorId: int, specularId: int, environmentId: int) -> str:
-        return str(flag)+str(colorId)+str(specularId)+str(specularId)
+        return str(flag)+str(colorId)+str(specularId)+str(environmentId)
 
 
 class TextureLoad:
     extract_dir: str
     ctxr_dir: str | None  # ctxr load folder if using ctxr
+    tri_dir: str | None  # folder to search for fallback transcache*.tri files, if using tri
     ctxr_name_lookup: dict
+    transcache_lookup: dict
     material_cache: dict
     overwrite_existing: bool
 
-    def __init__(self, extract_dir: str, ctxr_dir: str = None, overwrite_existing: bool = False):
+    def __init__(self, extract_dir: str, ctxr_dir: str = None, overwrite_existing: bool = False, tri_dir: str = None):
         self.extract_dir = extract_dir
         self.ctxr_dir = ctxr_dir
+        self.tri_dir = tri_dir
         self.material_cache = {}
         self.ctxr_name_lookup = {}
+        self.transcache_lookup = {}
         self.overwrite_existing = overwrite_existing
 
         # Load dictionary regardless, we'll use it to guess texture blending modes
@@ -72,21 +78,30 @@ class TextureLoad:
             for line in f.readlines():
                 tga_num = os.path.splitext(line.split()[1])[0]
                 self.ctxr_name_lookup[int(tga_num)] = line.split()[2]
-    
+
+        with open(transcache_lookup_path, "rt") as f:
+            for line in f.readlines():
+                parts = line.split()
+                self.transcache_lookup[int(parts[1])] = parts[2]
+
     def get_texture(self, mapID: int) -> bpy.types.Image | None:
         mapName = self.get_texture_nice_name(mapID) if self.ctxr_dir else self.get_texture_tri_name(mapID)
         if mapName == "":
             return None
-        if mapName.endswith(".png"):
+        if self.ctxr_dir and mapName.endswith(".png"):
             mapName = replaceExt(mapName, "dds")
-        
+
         if bpy.data.images.get(mapName) is not None:
             return bpy.data.images.get(mapName)
-        
+
         mapPath = os.path.join(self.extract_dir, mapName)
-        
+
         if not os.path.exists(mapPath) or self.overwrite_existing:
             if not self.ctxr_dir:
+                # kcej often used a stage's transcache.tri as a hotfix archive instead of reauthoring the original tri/model files.
+                # if we can't find a specific texture in the model's specified tri, check the transcache.
+                if self._tryLoadFromTranscache(mapID, mapPath):
+                    return bpy.data.images.get(mapName)
                 print("Path did not exist:", mapPath)
                 return None
             # Load ctxr
@@ -103,7 +118,37 @@ class TextureLoad:
         
         bpy.data.images.load(mapPath)
         return bpy.data.images.get(mapName)
-    
+
+    def _tryLoadFromTranscache(self, mapID: int, mapPath: str) -> bool:
+        # MC: bluepoint shit out a bunch of transcache files with different names. use transcachemapping.txt rather than scanning all of them at runtime.
+        if self.tri_dir and mapID in self.transcache_lookup:
+            transcache_path = os.path.join(self.tri_dir, self.transcache_lookup[mapID])
+            if os.path.exists(transcache_path):
+                print("Texture not in model's own tri, trying", self.transcache_lookup[mapID])
+                tri = TRI()
+                with open(transcache_path, "rb") as f:
+                    tri.fromFile(f)
+                if tri.dumpById(self.extract_dir, mapID) is not None:
+                    bpy.data.images.load(mapPath)
+                    return True
+
+        # PS2 dumps: transcache is right next to the model, https://www.youtube.com/watch?v=m2qUfEryiNk
+        modelDir = os.path.dirname(self.extract_dir)
+        candidatePaths = set(glob.glob(os.path.join(modelDir, "transcache*.tri")))
+        hashedPath = os.path.join(modelDir, f"{gv_strcode('transcache'):06x}.tri")
+        if os.path.exists(hashedPath):
+            candidatePaths.add(hashedPath)
+        for transcache_path in sorted(candidatePaths):
+            print("Texture not in model's own tri, trying", os.path.basename(transcache_path))
+            tri = TRI()
+            with open(transcache_path, "rb") as f:
+                tri.fromFile(f)
+            if tri.dumpById(self.extract_dir, mapID) is not None:
+                bpy.data.images.load(mapPath)
+                return True
+
+        return False
+
     def get_texture_nice_name(self, mapID: int) -> str:
         mapName = self.get_texture_tri_name(mapID)
         if mapID != 0 and mapID in self.ctxr_name_lookup:
@@ -114,7 +159,7 @@ class TextureLoad:
     def get_texture_tri_name(mapID: int) -> str:
         if mapID == 0:
             return ""
-        return f"{mapID}.tga"
+        return f"{mapID:06x}.png"
 
 
     def makeMaterial(self, name: str, flag: int, colorId: int, specularId: int, environmentId: int, merge_materials: bool) -> bpy.types.Material:
@@ -169,9 +214,7 @@ class TextureLoad:
                 material.blend_method = 'BLEND'
                 material.use_backface_culling = False
                 material.show_transparent_back = True
-                output_alpha = color_image.outputs['Alpha']
-                if self.ctxr_dir:
-                    output_alpha = matHelper.make_alpha_multiplier(color_image).outputs[0]
+                output_alpha = matHelper.make_alpha_multiplier(color_image).outputs[0]
                 links.new(output_alpha, principled.inputs['Alpha'])
                 
         elif colorId > 0:
@@ -187,12 +230,9 @@ class TextureLoad:
             specular_image.hide = True
             specular_image.name = "g_SpecularMap"
             specular_image.label = "g_SpecularMap"
-            specularOut = specular_image.outputs['Alpha']
+            specular_mul_node = matHelper.make_alpha_multiplier(specular_image, "Specular Alpha Multiplier")
+            specularOut = specular_mul_node.outputs[0]
 
-            if self.ctxr_dir:
-                specular_mul_node = matHelper.make_alpha_multiplier(specular_image, "Specular Alpha Multiplier")
-                specularOut = specular_mul_node.outputs[0]
-                
             if 'Specular' in principled.inputs:
                 links.new(specularOut, principled.inputs['Specular'])
             else:
@@ -314,9 +354,10 @@ class TextureSave:
         
         if matchImage is not None:
             matchImageName, matchImageExt = os.path.splitext(matchImage.name)
-            # TGA detection takes priority over fallback ID
-            if matchImageName.isnumeric() and matchImageExt == ".tga":
-                mapID = int(matchImageName)
+            # TRI-sourced PNG detection takes priority over fallback ID
+            if matchImageExt == ".png" and matchImageName != "" \
+              and all(c in "0123456789abcdefABCDEF" for c in matchImageName):
+                mapID = int(matchImageName, 16)
             elif matchImageExt == ".dds":
                 self.textures_to_save.add(matchImage)
                 # DDS detection does not have priority over fallback ID

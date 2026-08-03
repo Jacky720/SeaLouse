@@ -1,7 +1,21 @@
 import bpy
 from ..evm import *
-from ...util.util import getBoneIndex, getFingerIndex
+from ...util.util import getBoneIndex, getFingerIndex, getRawNormal, computeStableVertices
 from ...util.materials import TextureSave
+
+
+def setModeSafe(obj, mode):
+    for o in bpy.context.view_layer.objects:
+        o.select_set(False)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    with bpy.context.temp_override(active_object=obj, selected_objects=[obj], object=obj):
+        bpy.ops.object.mode_set(mode=mode)
+
+
+def refreshMeshState(obj):
+    setModeSafe(obj, 'EDIT')
+    setModeSafe(obj, 'OBJECT')
 
 
 def vertCoordCheck(vert1: EVMVertex, vert2: EVMVertex):
@@ -13,11 +27,13 @@ def cycleThree(x: list[any]):
 def reverseFour(x: list[any]):
     x[0], x[1], x[2], x[3] = x[3], x[2], x[1], x[0]
 
-def evmVertFromVert(vert, isFace: bool) -> EVMVertex:
-    return EVMVertex(round(vert.co.x), round(vert.co.y), round(vert.co.z), isFace)
+def evmVertFromVert(vert, isFace: bool, posScale: float) -> EVMVertex:
+    # Inverse of evm_importer's "raw * posScale" bake - see evmPosScale() in evm.py.
+    return EVMVertex(vert.co.x / posScale, vert.co.y / posScale, vert.co.z / posScale, isFace)
 
-def evmNormFromLoop(loop) -> EVMNormal:
-    return EVMNormal(loop.normal.x * -4096, loop.normal.y * -4096, loop.normal.z * -4096)
+def evmNormFromLoop(mesh, loop, stableVertices) -> EVMNormal:
+    nrm = getRawNormal(mesh, loop.vertex_index, loop.normal, stableVertices)
+    return EVMNormal(nrm.x * -4096, nrm.y * -4096, nrm.z * -4096)
 
 def evmUvFromLayerAndLoop(omesh, uvLayer: int, loopIndex: int) -> EVMUv:
     uv = omesh.uv_layers[uvLayer].uv[loopIndex].vector
@@ -38,16 +54,15 @@ def main(evm_file: str, collection_name: str, ctxr_dir: str = None):
     #evm.header.evmType = amt["evmType"]
     evm.header.strcode = amt["strcode"]
     evm.header.flag = amt["flag"]
+    # DG_EVMTYPE_LARGE: use raw positions if set, else /16
+    posScale = evmPosScale(evm.header.flag)
     evm.header.minPos = EVMVector3(amt["bboxMin"][0], amt["bboxMin"][1], amt["bboxMin"][2])
     evm.header.maxPos = EVMVector3(amt["bboxMax"][0], amt["bboxMax"][1], amt["bboxMax"][2])
     
     evm.bones = [EVMBone() for _ in range(len(amt.data.bones))]
     
-    bpy.ops.object.select_all(action='DESELECT')
-    amt.select_set(True)
-    bpy.context.view_layer.objects.active = amt
-    bpy.ops.object.mode_set(mode='EDIT')
-    
+    setModeSafe(amt, 'EDIT')
+
     fingerIndex = getFingerIndex([x.name for x in amt.data.edit_bones])
     evm.header.fingerIndex = fingerIndex
     
@@ -73,8 +88,8 @@ def main(evm_file: str, collection_name: str, ctxr_dir: str = None):
         evmBone.maxPos.x = mesh.bound_box[6][0]
         evmBone.maxPos.y = mesh.bound_box[6][1]
         evmBone.maxPos.z = mesh.bound_box[6][2]
-    bpy.ops.object.mode_set(mode='OBJECT')
-    
+    setModeSafe(amt, 'OBJECT')
+
     texSave = TextureSave()
     
     for i, obj in enumerate(collection.all_objects):
@@ -83,8 +98,10 @@ def main(evm_file: str, collection_name: str, ctxr_dir: str = None):
         print("Exporting", obj.name)
         # For now, let's assume direct re-export (so meshes and bones are still tightly linked)
         omesh = obj.data
+        refreshMeshState(obj)
         if bpy.app.version < (4, 1):
             omesh.calc_normals_split()
+        stableVertices = computeStableVertices(omesh)
         #evm.header.numMesh += 1
         #evm.header.numBones += 1
         
@@ -195,8 +212,8 @@ def main(evm_file: str, collection_name: str, ctxr_dir: str = None):
                 vertsWritten += [vertexIndices[compress_add_index]]
                 #someSkinningTables += [vertexGroup.skinningTable]
                 vert3 = omesh.vertices[vertexIndices[compress_add_index]]
-                vertexGroup.vertices += [evmVertFromVert(vert3, True)]
-                vertexGroup.normals += [evmNormFromLoop(omesh.loops[loopIndices[compress_add_index]])]
+                vertexGroup.vertices += [evmVertFromVert(vert3, True, posScale)]
+                vertexGroup.normals += [evmNormFromLoop(omesh, omesh.loops[loopIndices[compress_add_index]], stableVertices)]
                 if len(omesh.uv_layers) > 0:
                     vertexGroup.uvs += [evmUvFromLayerAndLoop(omesh, 0, loopIndices[compress_add_index])]
                 if len(omesh.uv_layers) > 1:
@@ -204,7 +221,7 @@ def main(evm_file: str, collection_name: str, ctxr_dir: str = None):
                 if len(omesh.uv_layers) > 2:
                     vertexGroup.uvs3 += [evmUvFromLayerAndLoop(omesh, 2, loopIndices[compress_add_index])]
                 vertexGroup.weights += [EVMWeights(
-                                        [int(x.weight*128) for x in vert3.groups],
+                                        [round(x.weight*128) for x in vert3.groups],
                                         [skinnedIndexFromVertGroup(vertexGroup, x) << 2 for x in vert3.groups])]
                 if len(vert3.groups) > vertexGroup.numSkin:
                     vertexGroup.numSkin = len(vert3.groups)
@@ -219,11 +236,11 @@ def main(evm_file: str, collection_name: str, ctxr_dir: str = None):
                 vert2 = omesh.vertices[vertexIndices[1]]
                 vert3 = omesh.vertices[vertexIndices[2]]
                 vertexGroup.vertices += [
-                    evmVertFromVert(vert1, False),
-                    evmVertFromVert(vert2, False),
-                    evmVertFromVert(vert3, True)
+                    evmVertFromVert(vert1, False, posScale),
+                    evmVertFromVert(vert2, False, posScale),
+                    evmVertFromVert(vert3, True, posScale)
                 ]
-                vertexGroup.normals += [evmNormFromLoop(omesh.loops[loop]) for loop in loopIndices]
+                vertexGroup.normals += [evmNormFromLoop(omesh, omesh.loops[loop], stableVertices) for loop in loopIndices]
                 if len(obj.data.uv_layers) > 0:
                     vertexGroup.uvs += [
                         evmUvFromLayerAndLoop(omesh, 0, loopIndices[0]),
@@ -243,13 +260,13 @@ def main(evm_file: str, collection_name: str, ctxr_dir: str = None):
                         evmUvFromLayerAndLoop(omesh, 2, loopIndices[2])
                     ]
                 vertexGroup.weights += [EVMWeights(
-                                        [int(x.weight*128) for x in vert1.groups],
+                                        [round(x.weight*128) for x in vert1.groups],
                                         [skinnedIndexFromVertGroup(vertexGroup, x) << 2 for x in vert1.groups]),
                                         EVMWeights(
-                                        [int(x.weight*128) for x in vert2.groups],
+                                        [round(x.weight*128) for x in vert2.groups],
                                         [skinnedIndexFromVertGroup(vertexGroup, x) << 2 for x in vert2.groups]),
                                         EVMWeights(
-                                        [int(x.weight*128) for x in vert3.groups],
+                                        [round(x.weight*128) for x in vert3.groups],
                                         [skinnedIndexFromVertGroup(vertexGroup, x) << 2 for x in vert3.groups])]
                 if len(vert1.groups) > vertexGroup.numSkin:
                     vertexGroup.numSkin = len(vert1.groups)
@@ -307,13 +324,14 @@ def main(evm_file: str, collection_name: str, ctxr_dir: str = None):
                 # 3 verts: change 012 to 120
                 # 4 verts: change 0123 (012, 321) to 3210 (321, 012)
                 # 5+ verts: change 01234 (012, 321, 234) to 3210234 (321, 012, 234)
-                # TODO: even if this works, it needs to modify allVertsWritten
-                if not mesh.vertices[3].isFace: # 3 verts
+                vertsWritten = allVertsWritten[i]
+                if len(mesh.vertices) < 4 or not mesh.vertices[3].isFace: # 3 verts (or no 4th vertex to check)
                     cycleThree(mesh.vertices)
                     mesh.vertices[1].isFace = False
                     mesh.vertices[2].isFace = True
                     cycleThree(mesh.normals)
                     cycleThree(mesh.weights)
+                    cycleThree(vertsWritten)
                     if mesh.uvs is not None:
                         cycleThree(mesh.uvs)
                     if mesh.uvs2 is not None:
@@ -327,20 +345,23 @@ def main(evm_file: str, collection_name: str, ctxr_dir: str = None):
                         mesh.vertices[j].isFace = not mesh.vertices[j].isFace
                     reverseFour(mesh.normals)
                     reverseFour(mesh.weights)
+                    reverseFour(vertsWritten)
                     if mesh.uvs is not None:
                         reverseFour(mesh.uvs)
                     if mesh.uvs2 is not None:
                         reverseFour(mesh.uvs2)
                     if mesh.uvs3 is not None:
                         reverseFour(mesh.uvs3)
-                
-                if mesh.vertices[4].isFace: # 5+ verts, actual expansion
+
+                if len(mesh.vertices) > 4 and mesh.vertices[4].isFace: # 5+ verts, actual expansion
                     mesh.vertices.insert(4, mesh.vertices[0])
                     mesh.vertices.insert(4, mesh.vertices[1])
                     mesh.normals.insert(4, mesh.normals[0])
                     mesh.normals.insert(4, mesh.normals[1])
                     mesh.weights.insert(4, mesh.weights[0])
                     mesh.weights.insert(4, mesh.weights[1])
+                    vertsWritten.insert(4, vertsWritten[0])
+                    vertsWritten.insert(4, vertsWritten[1])
                     if mesh.uvs is not None:
                         mesh.uvs.insert(4, mesh.uvs[0])
                         mesh.uvs.insert(4, mesh.uvs[1])

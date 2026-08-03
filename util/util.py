@@ -1,6 +1,59 @@
 import os, shutil, struct
 from ..tri.tri import tri_lookup_path
 
+
+RAW_NORMAL_ATTR = "sealouse_raw_normal"
+RAW_POSITION_ATTR = "sealouse_raw_position"
+_POSITION_EPSILON = 1e-6  # float noise floor
+
+def setRawNormalAttribute(objmesh, normals):
+    attr = objmesh.attributes.new(name=RAW_NORMAL_ATTR, type='FLOAT_VECTOR', domain='POINT')
+    attr.data.foreach_set("vector", [c for n in normals for c in n])
+
+def setRawPositionAttribute(objmesh, vertices):
+    attr = objmesh.attributes.new(name=RAW_POSITION_ATTR, type='FLOAT_VECTOR', domain='POINT')
+    attr.data.foreach_set("vector", [c for v in vertices for c in v])
+
+# store original vert positions on import, and skip normal recalculation if a specific face's verts haven't actually changed.
+# not 100% neccasary, but ensures that everything's exactly as it original was just incase blender changes something in the future.
+def computeStableVertices(mesh):
+
+    pos_attr = mesh.attributes.get(RAW_POSITION_ATTR)
+    if pos_attr is None:
+        return frozenset()
+    if len(pos_attr.data) != len(mesh.vertices):
+
+        return frozenset()
+    unchanged = set()
+    for i, v in enumerate(mesh.vertices):
+        stored = pos_attr.data[i].vector
+        if (stored - v.co).length < _POSITION_EPSILON:
+            unchanged.add(i)
+    if not unchanged:
+        return frozenset()
+    neighbors = {}
+    for poly in mesh.polygons:
+        vs = poly.vertices
+        for vi in vs:
+            neighbors.setdefault(vi, set()).update(vs)
+    stable = set()
+    for vi in unchanged:
+        adj = neighbors.get(vi)
+        if adj is None or adj.issubset(unchanged):
+            stable.add(vi)
+    return frozenset(stable)
+
+
+def getRawNormal(mesh, vertex_index, live_normal, stableVertices):
+
+    if vertex_index not in stableVertices:
+        return live_normal
+    attr = mesh.attributes.get(RAW_NORMAL_ATTR)
+    if attr is None or vertex_index >= len(attr.data):
+
+        return live_normal
+    return attr.data[vertex_index].vector
+
 kmsBoneNameArray = [
     # Tuples indicate a bone that we would prefer to map differently with MGR models (I like MGR)
     "HIP",
@@ -138,7 +191,7 @@ def stripAllExt(path:str) -> str:
     
 texture_modes = [
     ('none', 'No Textures', 'Do not load textures'),
-    ('tri', 'Unpack .tri', 'Unpack .tga from .tri file'),
+    ('tri', 'Unpack .tri', 'Unpack .png from .tri file'),
     ('ctxr', 'Unpack .ctxr', 'Unpack .png from .ctxr files')
 ]
 
@@ -156,7 +209,7 @@ def changeTextureMode(self, context):
     if self.texture_mode == 'ctxr':
         self.texture_path = defaultTexturePaths[2]
 
-def triNameFromModel(modelPath: str, modelType: str = None) -> str | None:
+def _readTriCode(modelPath: str, modelType: str = None) -> int | None:
     if modelType is None:
         modelType = os.path.splitext(modelPath)[1][-3:]
     modelType = modelType.lower()
@@ -164,13 +217,65 @@ def triNameFromModel(modelPath: str, modelType: str = None) -> str | None:
         return None
 
     with open(modelPath, "rb") as fp:
-        fp.seek(0x10 if modelType == 'kms' else 0x20)
-        triCode: int = struct.unpack("<I", fp.read(4))[0]
+        if modelType == 'kms':
+            # KMSHeader: pad @0x0C, strcode @0x10 - PS2-format files (pad != 0)
+            # store the real code in pad instead, same override KMSHeader.fromFile does.
+            fp.seek(0x0C)
+            pad, strcode = struct.unpack("<II", fp.read(8))
+            return pad if pad != 0 else strcode
+        else:
+            # EVMHeader: strcode @0x20, pad @0x24 - same PS2-format override as KMS,
+            # just with pad following strcode instead of preceding it.
+            fp.seek(0x20)
+            strcode, pad = struct.unpack("<II", fp.read(8))
+            return pad if pad != 0 else strcode
+
+def triNameFromModel(modelPath: str, modelType: str = None) -> str | None:
+    triCode = _readTriCode(modelPath, modelType)
+    if triCode is None:
+        return None
 
     with open(tri_lookup_path, "rt") as fp:
         for line in fp.readlines():
             if int(line.split()[1]) == triCode:
                 return line.split()[2]
+
+def gv_strcode(name: str) -> int:
+    value = 0
+    for c in name.encode("latin-1"):
+        value = ((value << 5) | (value >> 19)) & 0xffffff
+        value = (value + ord(chr(c).lower())) & 0xffffff
+    if value == 0:
+        value = 1
+    return value
+
+def _looksLikeStrcode(name: str) -> bool:
+    # does he lookuh like a man?
+    return len(name) == 6 and all(c in "0123456789abcdefABCDEF" for c in name)
+
+# ps2 stage dumps. if tri are still original strcode, we use the strcode filename, otherwise, use gv_strcode("joydict recovered tri name") to detect the right tri.
+def triPathFromHashFallback(modelPath: str, modelType: str = None) -> str | None:
+    triCode = _readTriCode(modelPath, modelType)
+    if triCode is None:
+        return None
+
+    searchDir = os.path.dirname(modelPath)
+
+    # ps2 .tri without its joydict resolved alias, the actual filename is already the strcode and we can just use that directly.
+    directStrcodePath = os.path.join(searchDir, f"{triCode:06x}.tri")
+    if os.path.exists(directStrcodePath):
+        return directStrcodePath
+
+    for fname in os.listdir(searchDir):
+        if not fname.lower().endswith(".tri"):
+            continue
+        name = os.path.splitext(fname)[0]
+        if _looksLikeStrcode(name):
+            continue  # already checked above (direct strcode match)
+            #ps2 tri that have been renamed back to their original alias by arsenal w/ joydict. rehash the restored alias back to strcode (lol)
+        if gv_strcode(name) == triCode:
+            return os.path.join(searchDir, fname)
+    return None
 
     return None
 

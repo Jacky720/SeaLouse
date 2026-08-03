@@ -414,10 +414,10 @@ class KMSVertex:
     weight: int
     
     def __init__(self, x=0, y=0, z=0, weight=4096):
-        self.x = int(x)
-        self.y = int(y)
-        self.z = int(z)
-        self.weight = int(weight)
+        self.x = round(x)
+        self.y = round(y)
+        self.z = round(z)
+        self.weight = round(weight)
     
     def fromFile(self, file: BufferedReader):
         self.x, self.y, self.z, self.weight = struct.unpack("<hhhh", file.read(0x8))
@@ -436,9 +436,9 @@ class KMSNormal:
     isFace: bool
     
     def __init__(self, x=0, y=0, z=0, isFace=False):
-        self.x = int(x)
-        self.y = int(y)
-        self.z = int(z)
+        self.x = round(x)
+        self.y = round(y)
+        self.z = round(z)
         self.flags = 0x8fff
         self.isFace = isFace
     
@@ -462,9 +462,9 @@ class KMSUv:
     v: int
     
     def __init__(self, u=0, v=0):
-        self.u = int(u)
-        self.v = int(v)
     
+        self.u = round(u)
+        self.v = round(v)
     def fromFile(self, file: BufferedReader):
         self.u, self.v = struct.unpack("<hh", file.read(0x4))
         return self

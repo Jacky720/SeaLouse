@@ -1,7 +1,7 @@
 import bpy
 import os
 from ...config import kmsConfig
-from ...util.util import replaceExt, texture_modes, changeTextureMode, defaultTexturePaths, triNameFromModel
+from ...util.util import replaceExt, texture_modes, changeTextureMode, defaultTexturePaths, triNameFromModel, triPathFromHashFallback
 from bpy_extras.io_utils import ImportHelper
 
 class ImportMgsKms(bpy.types.Operator, ImportHelper):
@@ -56,6 +56,11 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
                 else:
                     tri_path = os.path.join(tri_dir, tri_name)
 
+                if not os.path.exists(tri_path):
+                    hashed_path = triPathFromHashFallback(kms_path, "kms")
+                    if hashed_path is not None:
+                        tri_path = hashed_path
+
                 print("Attempting to load TRI:", tri_path)
                 if os.path.exists(tri_path):
                     tri = TRI()
@@ -70,8 +75,9 @@ class ImportMgsKms(bpy.types.Operator, ImportHelper):
                 else:
                     kms_importer.main(kms_path, os.path.join(dirname, self.texture_path), self.texture_overwrite, self.merge_material_slots)
             else:
-                kms_importer.main(kms_path, merge_material_slots = self.merge_material_slots)
-                
+                kms_importer.main(kms_path, merge_material_slots = self.merge_material_slots,
+                                   tri_dir = tri_dir if self.texture_mode == 'tri' else None)
+
         return {'FINISHED'}
 
     def draw(self, context):

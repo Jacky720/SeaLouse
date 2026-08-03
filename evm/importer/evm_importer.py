@@ -3,7 +3,7 @@ from ..evm import *
 import os
 from mathutils import Vector
 from ...kms.importer.rotationWrapperObj import objRotationWrapper
-from ...util.util import getBoneName, expected_parent_bones
+from ...util.util import getBoneName, expected_parent_bones, setRawNormalAttribute, setRawPositionAttribute
 from ...util.materials import TextureLoad, MaterialHelper
 import bmesh
 
@@ -52,10 +52,11 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str, hasHumanBones: boo
     weights = []
     boneIndices = []
     uniqueMaterialIndices: dict = {}
+    posScale = evmPosScale(evm.header.flag)
     #bpy.context.scene.collection.children.link(bpy.data.collections.new("looseCoords"))
     for i, vertexGroup in enumerate(evm.meshes):
         faceIndexOffset = len(vertices)
-        vertices += [tuple(vert.xyz()) for vert in vertexGroup.vertices]
+        vertices += [(vert.x * posScale, vert.y * posScale, vert.z * posScale) for vert in vertexGroup.vertices]
         #for j, vert in enumerate(vertexGroup.vertices):
         #    target = bpy.data.objects.new(str(j), None)
         #    target.empty_display_size = 0.001
@@ -128,13 +129,14 @@ def construct_mesh(evm: EVM, evmCollection, extract_dir: str, hasHumanBones: boo
     obj = bpy.data.objects.new(objmesh.name, objmesh)
     #obj.location = Vector(meshPos)
     obj.location = Vector((0,0,0))
-    obj.scale = Vector((1/16,1/16,1/16))
     evmCollection.objects.link(obj)
     objmesh.from_pydata(vertices, [], faces, False)
     if bpy.app.version < (4, 1):
         objmesh.use_auto_smooth = True
     #print("\n".join([str(x.normal) for x in objmesh.loops[:10]]) + "\n")
     objmesh.normals_split_custom_set_from_vertices(normals)
+    setRawNormalAttribute(objmesh, normals)
+    setRawPositionAttribute(objmesh, vertices)
     if bpy.app.version < (4, 1):
         objmesh.calc_normals_split()
     objmesh.update(calc_edges=True)
@@ -248,7 +250,7 @@ def apply_materials(evm: EVM, obj, extract_dir: str, texLoader: TextureLoad, mer
 
     return True
 
-def main(evm_file: str, ctxr_path: str = None, overwrite_existing: bool = False, merge_material_slots: bool = False):
+def main(evm_file: str, ctxr_path: str = None, overwrite_existing: bool = False, merge_material_slots: bool = False, tri_dir: str = None):
     evm = EVM()
     with open(evm_file, "rb") as f:
         evm.fromFile(f)
@@ -276,7 +278,7 @@ def main(evm_file: str, ctxr_path: str = None, overwrite_existing: bool = False,
     parentBoneList = [bone.parentInd for bone in evm.bones]
     hasHumanBones = parentBoneList[:len(expected_parent_bones)] == expected_parent_bones
     
-    texLoader = TextureLoad(extract_dir, ctxr_path, overwrite_existing)
+    texLoader = TextureLoad(extract_dir, ctxr_path, overwrite_existing, tri_dir)
     
     mesh = construct_mesh(evm, col, extract_dir, hasHumanBones, texLoader, merge_material_slots)
     amt = construct_armature(evm, collection_name, hasHumanBones)

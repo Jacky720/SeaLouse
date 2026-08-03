@@ -16,10 +16,17 @@ def main(tri_path: str, col: bpy.types.Collection, stage_path: str = None, stage
     else:
         tri = TRI()
     
-    # Iterate materials in scene, save them
+    # Iterate materials used by this collection's meshes, save them
     texIDs = [x.texID for x in tri.textures]
     texSave = TextureSave()
-    for mat in bpy.data.materials:  # TODO: Should iterate only collection objects
+    colMaterials = []
+    for obj in col.all_objects:
+        if obj.type != "MESH":
+            continue
+        for slot in obj.material_slots:
+            if slot.material and slot.material not in colMaterials:
+                colMaterials.append(slot.material)
+    for mat in colMaterials:
         for matType in ["color", "specular", "environment"]:
             texID = texSave.get_map(mat, matType)
             if texID == 0 or texID in texIDs:

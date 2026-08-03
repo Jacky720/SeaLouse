@@ -3,7 +3,7 @@ import bpy
 from ..kms import *
 import os
 from mathutils import Vector
-from ...util.util import getBoneName, expected_parent_bones
+from ...util.util import getBoneName, expected_parent_bones, setRawNormalAttribute, setRawPositionAttribute
 from ...util.materials import TextureLoad, MaterialHelper
 from .rotationWrapperObj import objRotationWrapper
 import bmesh
@@ -53,6 +53,7 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
     #bpy.context.scene.collection.children.link(bpy.data.collections.new("looseCoords"))
     for i, vertexGroup in enumerate(mesh.vertexGroups):
         faceIndexOffset = len(vertices)
+        # don't clamp to mesh.minPos/maxPos, breakable models use oversized bbox's for particle effects, and clamping causes them to get culled
         vertices += [(vert.x, vert.y, vert.z) for vert in vertexGroup.vertices]
         #for j, vert in enumerate(vertexGroup.vertices):
         #    target = bpy.data.objects.new(str(j), None)
@@ -94,23 +95,7 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
                 flip = not flip
             else:
                 flip = False
-    
-    # Bounding box adjustment
-    for i, vert in enumerate(vertices):
-        if vert[0] < mesh.minPos.x:
-            vert = (mesh.minPos.x, vert[1], vert[2])
-        elif vert[0] > mesh.maxPos.x:
-            vert = (mesh.maxPos.x, vert[1], vert[2])
-        if vert[1] < mesh.minPos.y:
-            vert = (vert[0], mesh.minPos.y, vert[2])
-        elif vert[1] > mesh.maxPos.y:
-            vert = (vert[0], mesh.maxPos.y, vert[2])
-        if vert[2] < mesh.minPos.z:
-            vert = (vert[0], vert[1], mesh.minPos.z)
-        elif vert[2] > mesh.maxPos.z:
-            vert = (vert[0], vert[1], mesh.maxPos.z)
-        vertices[i] = vert
-    
+
     #print("\n".join([str(x[0]) for x in normals[:10]]) + "\n")
     
     objmesh = bpy.data.meshes.new("kmsMesh%d" % meshInd)
@@ -124,6 +109,8 @@ def construct_mesh(mesh: KMSMesh, kmsCollection, meshInd: int, meshPos, extract_
         objmesh.use_auto_smooth = True
     #print("\n".join([str(x.normal) for x in objmesh.loops[:10]]) + "\n")
     objmesh.normals_split_custom_set_from_vertices(normals)
+    setRawNormalAttribute(objmesh, normals)
+    setRawPositionAttribute(objmesh, vertices)
     if bpy.app.version < (4, 1):
         objmesh.calc_normals_split()
     objmesh.update(calc_edges=True)
@@ -229,7 +216,7 @@ def apply_materials(mesh: KMSMesh, obj, extract_dir: str, texLoader: TextureLoad
             obj.data.materials.append(material)
     return True
 
-def main(kms_file: str, ctxr_path: str = None, overwrite_existing: bool = False, merge_material_slots: bool = False):
+def main(kms_file: str, ctxr_path: str = None, overwrite_existing: bool = False, merge_material_slots: bool = False, tri_dir: str = None):
     kms = KMS()
     with open(kms_file, "rb") as f:
         kms.fromFile(f)
@@ -257,7 +244,7 @@ def main(kms_file: str, ctxr_path: str = None, overwrite_existing: bool = False,
     parentBoneList = [mesh.parentInd for mesh in kms.meshes]
     hasHumanBones = parentBoneList[:len(expected_parent_bones)] == expected_parent_bones
     
-    texLoader = TextureLoad(extract_dir, ctxr_path, overwrite_existing)
+    texLoader = TextureLoad(extract_dir, ctxr_path, overwrite_existing, tri_dir)
     
     bMeshes = []
     for i, mesh in enumerate(kms.meshes):
