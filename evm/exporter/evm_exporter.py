@@ -308,7 +308,7 @@ def main(evm_file: str, collection_name: str, ctxr_dir: str = None):
                 # 4 verts: change 0123 (012, 321) to 3210 (321, 012)
                 # 5+ verts: change 01234 (012, 321, 234) to 3210234 (321, 012, 234)
                 # TODO: even if this works, it needs to modify allVertsWritten
-                if not mesh.vertices[3].isFace: # 3 verts
+                if len(mesh.vertices) <= 3 or not mesh.vertices[3].isFace: # 3 verts
                     cycleThree(mesh.vertices)
                     mesh.vertices[1].isFace = False
                     mesh.vertices[2].isFace = True
@@ -334,7 +334,7 @@ def main(evm_file: str, collection_name: str, ctxr_dir: str = None):
                     if mesh.uvs3 is not None:
                         reverseFour(mesh.uvs3)
                 
-                if mesh.vertices[4].isFace: # 5+ verts, actual expansion
+                if len(mesh.vertices) >= 5 and mesh.vertices[4].isFace: # 5+ verts, actual expansion
                     mesh.vertices.insert(4, mesh.vertices[0])
                     mesh.vertices.insert(4, mesh.vertices[1])
                     mesh.normals.insert(4, mesh.normals[0])
